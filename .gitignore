@@ -1,0 +1,32 @@
+# Rust
+target/
+Cargo.lock
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Datos del usuario
+target/debug/datos
+datos/
+
+# Scripts compilados
+_scripts/
+*.exe
+*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema
+.DS_Store
+Thumbs.db

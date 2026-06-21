@@ -1,0 +1,8 @@
+{
+	"directorios": [
+		"datos",
+		"datos/cursos",
+		"datos/entrada",
+		"datos/salida"
+	]
+}
