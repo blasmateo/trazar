@@ -1,0 +1,78 @@
+{
+	"campos": [
+		{
+			"campo": "nombre",
+			"tipo": "str",
+			"mensaje": "Nombre de curso",
+			"obligatorio": true
+		},
+		{
+			"campo": "descripcion",
+			"tipo": "str",
+			"mensaje": "Descripción de curso",
+			"obligatorio": false
+		},
+		{
+			"campo": "estado",
+			"tipo": "enum_int",
+			"mensaje": "Estado de actividad",
+			"opciones": {
+				"0": "programado",
+				"1": "abierto",
+				"2": "cerrado"
+			},
+			"obligatorio": true
+		},
+		{
+			"campo": "fecha_inicio",
+			"tipo": "fecha",
+			"mensaje": "Fecha inicio de curso (YYYY-MM-DD)",
+			"obligatorio": true
+		},
+		{
+			"campo": "fecha_fin",
+			"tipo": "fecha",
+			"mensaje": "Fecha final de curso (YYYY-MM-DD)",
+			"obligatorio": false
+		},
+		{
+			"campo": "docente",
+			"tipo": "array_str",
+			"mensaje": "Docencia",
+			"obligatorio": true,
+			"min_items": 1
+		},
+		{
+			"campo": "soporte_tecnico",
+			"tipo": "array_str",
+			"mensaje": "Soporte técnico",
+			"obligatorio": false
+		},
+		{
+			"campo": "costo",
+			"tipo": "float",
+			"mensaje": "Pago (USD) por período",
+			"obligatorio": true
+		},
+		{
+			"campo": "cobranza",
+			"tipo": "enum_int",
+			"mensaje": "Periodicidad de pago",
+			"opciones": {
+				"0": "no aplica",
+				"1": "por hora",
+				"2": "por clase",
+				"3": "mensual",
+				"4": "semanal",
+				"5": "anual",
+				"6": "curso completo"
+			},
+			"obligatorio": true,
+			"condicion": {
+				"campo": "costo",
+				"operador": ">",
+				"valor": 0
+			}
+		}
+	]
+}
