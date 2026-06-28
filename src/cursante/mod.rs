@@ -1,6 +1,5 @@
-// MÓDULO CURSO
+// MÓDULO CURSANTE
 
-pub mod preguntas;
 mod nuevo;
 mod mostrar;
 mod editar;

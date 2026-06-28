@@ -36,7 +36,7 @@
 			"obligatorio": false
 		},
 		{
-			"campo": "docente",
+			"campo": "docencia",
 			"tipo": "array_str",
 			"mensaje": "Docencia",
 			"obligatorio": true,

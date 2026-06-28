@@ -11,7 +11,7 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
     
     if !ruta_cursos.exists() {
         println!("ℹ No hay cursos registrados.");
-        println!("Use 'trazar curso -a' para agregar un curso.");
+        println!("Use 'trazar curso nuevo' para agregar un curso.");
         return Ok(());
     }
     
@@ -38,7 +38,7 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
     
     if cursos.is_empty() {
         println!("ℹ No hay cursos registrados.");
-        println!("Use 'trazar curso -a' para agregar un curso.");
+        println!("Use 'trazar curso nuevo' para agregar un curso.");
         return Ok(());
     }
     
@@ -194,35 +194,6 @@ fn mostrar_ficha_ordenada(json: &Value) -> Result<(), String> {
     }
     
     Ok(())
-}
-
-fn interpretar_valor(valor: &Value, metadato: Option<&Value>) -> String {
-    if let Some(meta) = metadato {
-        if let Some(tipo) = meta.get("tipo").and_then(|t| t.as_str()) {
-            match tipo {
-                "enum" => {
-                    if let Some(val_str) = valor.as_u64().map(|v| v.to_string()) {
-                        if let Some(opciones) = meta.get("valores") {
-                            if let Some(texto) = opciones.get(&val_str).and_then(|v| v.as_str()) {
-                                return texto.to_string();
-                            }
-                        }
-                    }
-                }
-                "moneda" => {
-                    if let Some(num) = valor.as_f64() {
-                        let simbolo = meta.get("simbolo")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("$");
-                        return format!("{} {:.2}", simbolo, num);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    
-    formatear_valor(valor)
 }
 
 fn mostrar_estructura(ruta: &Path, prefijo: &str) -> Result<(), String> {

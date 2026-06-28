@@ -33,9 +33,10 @@ pub fn preguntar_nombre_curso(
     obligatorio: bool,
     ruta_cursos: &Path,
     excluir_id: Option<u32>,
+    prompt: &str,
 ) -> Result<Value, String> {
     loop {
-        let input = rl.readline("> ")
+        let input = rl.readline(prompt)
             .map_err(|e| format!("Error al leer entrada: {}", e))?;
         
         let valor = input.trim();
@@ -83,7 +84,7 @@ pub fn preguntar_numero(rl: &mut DefaultEditor, obligatorio: bool) -> Result<Val
                 let _ = rl.add_history_entry(&input);
                 return Ok(json!(num));
             }
-            Err(_) => println!("Debe ingresar un número válido. Intente nuevamente."),
+            Err(_) => println!("Se requiere ingresar un número válido. Intente nuevamente."),
         }
     }
 }
@@ -110,7 +111,7 @@ pub fn preguntar_float(rl: &mut DefaultEditor, obligatorio: bool) -> Result<Valu
                 let _ = rl.add_history_entry(&input);
                 return Ok(json!(num));
             }
-            Err(_) => println!("Debe ingresar un número válido (puede incluir decimales). Intente nuevamente."),
+            Err(_) => println!("Se requiere ingresar un número válido (puede incluir decimales). Intente nuevamente."),
         }
     }
 }
@@ -174,7 +175,7 @@ pub fn preguntar_enum(rl: &mut DefaultEditor, opciones: &serde_json::Map<String,
                     let _ = rl.add_history_entry(&input);
                     return Ok(json!(num));
                 }
-                Err(_) => println!("Debe ingresar un número válido."),
+                Err(_) => println!("Se requiere ingresar un número válido."),
             }
         } else {
             println!("Opción no válida. Intente nuevamente.");
@@ -196,7 +197,7 @@ pub fn preguntar_array(rl: &mut DefaultEditor, obligatorio: bool, min_items: usi
         
         if valor.is_empty() {
             if items.len() < min_items {
-                println!("Debe ingresar al menos {} elemento(s).", min_items);
+                println!("Se requiere ingresar al menos {} elemento(s).", min_items);
                 continue;
             }
             break;
@@ -349,6 +350,36 @@ pub fn encontrar_curso(cursos: &[(u32, String)], argumento: &str) -> Result<Stri
     }
     
     Err(format!("No se encontró ningún curso con el identificador '{}'", argumento))
+}
+
+/// Interpreta un valor según sus metadatos (enum, moneda, etc).
+pub fn interpretar_valor(valor: &Value, metadato: Option<&Value>) -> String {
+    if let Some(meta) = metadato {
+        if let Some(tipo) = meta.get("tipo").and_then(|t| t.as_str()) {
+            match tipo {
+                "enum" => {
+                    if let Some(val_str) = valor.as_u64().map(|v| v.to_string()) {
+                        if let Some(opciones) = meta.get("valores") {
+                            if let Some(texto) = opciones.get(&val_str).and_then(|v| v.as_str()) {
+                                return texto.to_string();
+                            }
+                        }
+                    }
+                }
+                "moneda" => {
+                    if let Some(num) = valor.as_f64() {
+                        let simbolo = meta.get("simbolo")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("$");
+                        return format!("{} {:.2}", simbolo, num);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    formatear_valor(valor)
 }
 
 /// Formatea un valor para mostrarlo.

@@ -1,13 +1,38 @@
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
-use rustyline::DefaultEditor;
 
 mod inspector;
 mod curso;
+mod cursante;
+
+// Templates de ayuda en español
+const HELP_CMD: &str = "\
+{about-with-newline}
+Uso: {usage}
+
+Comandos:
+{subcommands}
+Opciones:
+{options}
+";
+
+const HELP_SUBCMD: &str = "\
+{about-with-newline}
+Uso: {usage}
+
+Opciones:
+{options}
+";
 
 #[derive(Parser)]
-#[command(name = "trazar", about = "Trazabilidad Académica y Reporte", version)]
+#[command(
+    name = "trazar",
+    about = "Trazabilidad Académica y Reporte",
+    version,
+    help_template = HELP_CMD,
+    override_usage = "trazar <COMANDO>"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -16,40 +41,43 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Gestión de estructura de datos
+    #[command(
+        help_template = HELP_CMD,
+        override_usage = "trazar inspector <COMANDO>"
+    )]
     Inspector {
-        /// Crear estructura base
-        #[arg(short = 'e', long = "estructurar")]
-        estructurar: bool,
-        
-        /// Verificar integridad
-        #[arg(short = 'r', long = "revisar")]
-        revisar: bool,
-        
-        /// Borrar datos de usuario
-        #[arg(short = 'b', long = "borrar")]
-        limpiar: bool,
+        #[command(subcommand)]
+        action: InspectorAction,
     },
     
-	/// Gestión de cursos
-	Curso {
-		/// Agregar curso
-		#[arg(short = 'a', long = "agregar")]
-		agregar: bool,
-		
-		/// Ver cursos -opcionalmente por ID o nombre-
-		#[arg(short = 'v', long = "ver", num_args = 0..=1, default_missing_value = "")]
-		ver: Option<String>,
-		
-		/// Editar curso -opcionalmente por ID o nombre-
-		#[arg(short = 'e', long = "editar", num_args = 0..=1, default_missing_value = "")]
-		editar: Option<String>,
-		
-		/// Borrar cursos
-		#[arg(short = 'b', long = "borrar", num_args = 1..)]
-		borrar: Vec<String>,
-	},
+    /// Gestión de cursos
+    #[command(
+        help_template = HELP_CMD,
+        override_usage = "trazar curso <COMANDO>"
+    )]
+    Curso {
+        #[command(subcommand)]
+        action: CursoAction,
+    },
+    
+    /// Gestión de cursantes
+    #[command(
+        help_template = HELP_CMD,
+        override_usage = "trazar cursante [OPCIONES] <COMANDO>"
+    )]
+    Cursante {
+        /// Curso al que pertenece cada cursante
+        #[arg(short = 'c', long = "curso")]
+        curso: Option<String>,
+        #[command(subcommand)]
+        action: CursanteAction,
+    },
     
     /// Generar scripts de autocompletado
+    #[command(
+        help_template = HELP_SUBCMD,
+        override_usage = "trazar completions <SHELL> [RUTA]"
+    )]
     Completions {
         /// Shell para el que generar el script
         shell: Shell,
@@ -58,101 +86,200 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum InspectorAction {
+    /// Iniciar directorios base
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector init")]
+    Init,
+    /// Verificar integridad de directorios
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector verificar")]
+    Verificar,
+    /// Purgar toda la base de datos de usuario
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector purgar")]
+    Purgar,
+}
+
+#[derive(Subcommand)]
+enum CursoAction {
+    /// Crear un nuevo curso
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso nuevo")]
+    Nuevo,
+    /// Mostrar cursos (lista o ficha específica)
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso mostrar [OPCIONES]")]
+    Mostrar {
+        /// ID o nombre del curso
+        #[arg(short = 'i', long = "id")]
+        id: Option<String>,
+    },
+    /// Editar un curso existente
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso editar [OPCIONES]")]
+    Editar {
+        /// ID o nombre del curso
+        #[arg(short = 'i', long = "id")]
+        id: Option<String>,
+    },
+    /// Remover cursos
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso remover [OPCIONES]")]
+    Remover {
+        /// IDs o nombres de cursos a remover (si se omite, modo interactivo)
+        #[arg(short = 'i', long = "id", num_args = 0..)]
+        ids: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CursanteAction {
+    /// Agregar cursante
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante nuevo")]
+    Nuevo,
+    /// Mostrar cursantes (lista o ficha específica)
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante mostrar [OPCIONES]")]
+    Mostrar {
+        /// ID o nombre de cursante
+        #[arg(short = 'i', long = "id")]
+        id: Option<String>,
+    },
+    /// Editar cursante
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante editar [OPCIONES]")]
+    Editar {
+        /// ID o nombre de cursante
+        #[arg(short = 'i', long = "id")]
+        id: Option<String>,
+    },
+    /// Remover cursantes
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante remover [OPCIONES]")]
+    Remover {
+        /// IDs o nombres de cursantes a remover (si se omite, modo interactivo)
+        #[arg(short = 'i', long = "id", num_args = 0..)]
+        ids: Vec<String>,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
     let ruta_base = obtener_ruta_base();
-
+    
     match cli.command {
-        Commands::Inspector { estructurar, revisar, limpiar } => {
-            if estructurar {
-                match inspector::estructurar_base(&ruta_base) {
-                    Ok(_) => println!("✓ Estructura base creada/verificada"),
-                    Err(e) => eprintln!("✗ Error: {}", e),
+        Commands::Inspector { action } => {
+            match action {
+                InspectorAction::Init => {
+                    match inspector::init(&ruta_base) {
+                        Ok(_) => println!("✓ Estructura base creada/verificada"),
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
                 }
-            } else if revisar {
-                match inspector::revisar_integridad(&ruta_base) {
-                    Ok(faltantes) => {
-                        if faltantes.is_empty() {
-                            println!("✓ Integridad OK: todos los directorios existen");
-                        } else {
-                            println!("⚠ Faltan directorios:");
-                            for dir in faltantes {
-                                println!("  - {}", dir);
+                InspectorAction::Verificar => {
+                    match inspector::verificar(&ruta_base) {
+                        Ok(faltantes) => {
+                            if faltantes.is_empty() {
+                                println!("✓ Integridad OK: todos los directorios existen");
+                            } else {
+                                println!("⚠ Faltan directorios:");
+                                for dir in faltantes {
+                                    println!("  - {}", dir);
+                                }
                             }
                         }
+                        Err(e) => eprintln!("✗ Error: {}", e),
                     }
-                    Err(e) => eprintln!("✗ Error: {}", e),
                 }
-            } else if limpiar {
-				let mut rl = match DefaultEditor::new() {
-					Ok(editor) => editor,
-					Err(e) => {
-						eprintln!("✗ Error al inicializar editor: {}", e);
-						return;
-					}
-				};
-				
-				match rl.readline("¿Está seguro de borrar todos los datos? (borrar-todo/N): ") {
-					Ok(confirmacion) => {
-						if confirmacion.trim() == "borrar-todo" {
-							match inspector::limpiar(&ruta_base) {
-								Ok(_) => println!("✓ Datos eliminados"),
-								Err(e) => eprintln!("✗ Error: {}", e),
-							}
-						} else {
-							println!("Operación cancelada. No se borró nada.");
-						}
-					}
-					Err(_) => {
-						println!("\nOperación cancelada. No se borró nada.");
-					}
-				}
-			} else {
-                eprintln!("Debe especificar una acción: -e, -r, -b");
-                eprintln!("Use 'trazar inspector --help' para más información");
+                InspectorAction::Purgar => {
+                    let mut rl = match rustyline::DefaultEditor::new() {
+                        Ok(editor) => editor,
+                        Err(e) => {
+                            eprintln!("✗ Error al inicializar editor: {}", e);
+                            return;
+                        }
+                    };
+                    
+                    match rl.readline("¿Confirma purgar todos los datos? (purgar-todo/N): ") {
+                        Ok(confirmacion) => {
+                            if confirmacion.trim() == "purgar-todo" {
+                                match inspector::purgar(&ruta_base) {
+                                    Ok(_) => println!("✓ Datos eliminados"),
+                                    Err(e) => eprintln!("✗ Error: {}", e),
+                                }
+                            } else {
+                                println!("Operación cancelada. No se borró nada.");
+                            }
+                        }
+                        Err(_) => {
+                            println!("\nOperación cancelada. No se borró nada.");
+                        }
+                    }
+                }
             }
         }
         
-		Commands::Curso { agregar, ver, editar, borrar } => {
-			if agregar {
-				match curso::agregar(&ruta_base) {
-					Ok(_) => {},
-					Err(e) => eprintln!("✗ Error: {}", e),
-				}
-			} else if let Some(ref argumento) = ver {
-				if argumento.is_empty() {
-					match curso::ver(&ruta_base, None) {
-						Ok(_) => {},
-						Err(e) => eprintln!("✗ Error: {}", e),
-					}
-				} else {
-					match curso::ver(&ruta_base, Some(argumento.as_str())) {
-						Ok(_) => {},
-						Err(e) => eprintln!("✗ Error: {}", e),
-					}
-				}
-			} else if let Some(ref argumento) = editar {
-				if argumento.is_empty() {
-					match curso::editar(&ruta_base, None) {
-						Ok(_) => {},
-						Err(e) => eprintln!("✗ Error: {}", e),
-					}
-				} else {
-					match curso::editar(&ruta_base, Some(argumento.as_str())) {
-						Ok(_) => {},
-						Err(e) => eprintln!("✗ Error: {}", e),
-					}
-				}
-			} else if !borrar.is_empty() {
-				match curso::borrar(&ruta_base, &borrar) {
-					Ok(_) => {},
-					Err(e) => eprintln!("✗ Error: {}", e),
-				}
-			} else {
-				eprintln!("Debe especificar una acción: -a, -v, -e, -b");
-				eprintln!("Use 'trazar curso --help' para más información");
-			}
-		}
+        Commands::Curso { action } => {
+            match action {
+                CursoAction::Nuevo => {
+                    match curso::nuevo(&ruta_base) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+                CursoAction::Mostrar { id } => {
+                    match curso::mostrar(&ruta_base, id.as_deref()) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+                CursoAction::Editar { id } => {
+                    match curso::editar(&ruta_base, id.as_deref()) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+                CursoAction::Remover { ids } => {
+                    let nombres = if ids.is_empty() {
+                        None
+                    } else {
+                        Some(ids.as_slice())
+                    };
+                    match curso::remover(&ruta_base, nombres) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+            }
+        }
+        
+        Commands::Cursante { curso, action } => {
+            let curso_arg = curso.as_deref().filter(|s| !s.is_empty());
+            
+            match action {
+                CursanteAction::Nuevo => {
+                    match cursante::nuevo(&ruta_base, curso_arg) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+                CursanteAction::Mostrar { id } => {
+                    match cursante::mostrar(&ruta_base, curso_arg, id.as_deref()) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+                CursanteAction::Editar { id } => {
+                    match cursante::editar(&ruta_base, curso_arg, id.as_deref()) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+                CursanteAction::Remover { ids } => {
+                    let nombres = if ids.is_empty() {
+                        None
+                    } else {
+                        Some(ids.as_slice())
+                    };
+                    match cursante::remover(&ruta_base, curso_arg, nombres) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
+                    }
+                }
+            }
+        }
         
         Commands::Completions { shell, ruta } => {
             eprintln!("=== Instrucciones para autocompletado ===\n");

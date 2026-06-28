@@ -10,7 +10,7 @@ pub fn ejecutar(ruta_base: &Path) -> Result<(), String> {
     let ruta_cursos = ruta_base.join("datos/cursos");
     
     if !ruta_cursos.exists() {
-        return Err("No existe el directorio de cursos. Ejecute 'trazar inspector -e' primero".to_string());
+        return Err("No existe el directorio de cursos. Ejecute 'trazar inspector init' primero".to_string());
     }
     
     let mut rl = DefaultEditor::new()
@@ -48,11 +48,11 @@ pub fn ejecutar(ruta_base: &Path) -> Result<(), String> {
         
         let valor = match tipo {
             "str" => {
-                if campo_nombre == "nombre" {
-                    preguntar_nombre_curso(&mut rl, obligatorio, &ruta_cursos, None)?
-                } else {
-                    preguntar_texto(&mut rl, obligatorio)?
-                }
+				if campo_nombre == "nombre" {
+					preguntar_nombre_curso(&mut rl, obligatorio, &ruta_cursos, None, "> ")?
+				} else {
+					preguntar_texto(&mut rl, obligatorio)?
+				}
             }
             "int" => preguntar_numero(&mut rl, obligatorio)?,
             "float" => preguntar_float(&mut rl, obligatorio)?,

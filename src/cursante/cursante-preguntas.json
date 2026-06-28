@@ -1,0 +1,35 @@
+{
+	"campos": [
+		{
+			"campo": "nombre",
+			"tipo": "str",
+			"mensaje": "Nombre completo",
+			"obligatorio": true
+		},
+		{
+			"campo": "email",
+			"tipo": "str",
+			"mensaje": "Correo electrónico",
+			"obligatorio": false
+		},
+		{
+			"campo": "movil",
+			"tipo": "str",
+			"mensaje": "Teléfono móvil de contacto",
+			"obligatorio": false
+		},
+		{
+			"campo": "estado",
+			"tipo": "enum_int",
+			"mensaje": "Estado de cursante",
+			"opciones": {
+				"0": "retirado",
+				"1": "activo",
+				"2": "irregular",
+				"3": "egresado",
+				"4": "suspenso"
+			},
+			"obligatorio": true
+		}
+	]
+}

@@ -3,10 +3,10 @@ use std::path::Path;
 use serde_json::{json, Value};
 use rustyline::DefaultEditor;
 use chrono::{Local, NaiveDate, Offset as ChronoOffset};
-use super::preguntas::*;
+use crate::curso::preguntas::*;
 
-/// Edita los campos de un curso existente.
-pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String> {
+/// Edita los campos de un cursante existente.
+pub fn ejecutar(ruta_base: &Path, curso_arg: Option<&str>, cursante_arg: Option<&str>) -> Result<(), String> {
     let ruta_cursos = ruta_base.join("datos/cursos");
     
     if !ruta_cursos.exists() {
@@ -43,15 +43,10 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
     let mut rl = DefaultEditor::new()
         .map_err(|e| format!("Error al inicializar editor: {}", e))?;
     
-    let (id_curso, nombre_curso) = if let Some(arg) = argumento {
-        let nombre = encontrar_curso(&cursos, arg)?;
-        let id = cursos.iter()
-            .find(|(_, n)| n == &nombre)
-            .map(|(id, _)| *id)
-            .unwrap();
-        (id, nombre)
+    let nombre_curso = if let Some(arg) = curso_arg {
+        encontrar_curso(&cursos, arg)?
     } else {
-        println!("Cursos registrados ({}):", cursos.len());
+        println!("Cursos disponibles:");
         for (id, nombre) in &cursos {
             println!("  [{}] {}", id, nombre);
         }
@@ -67,28 +62,90 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
         }
         
         let id_seleccionado: u32 = input.parse()
-            .map_err(|_| "Se requiere ingresar un número válido".to_string())?;
+            .map_err(|_| "Debe ingresar un número válido".to_string())?;
         
-        let nombre = encontrar_curso(&cursos, &id_seleccionado.to_string())?;
-        (id_seleccionado, nombre)
+        encontrar_curso(&cursos, &id_seleccionado.to_string())?
     };
     
     let ruta_curso = ruta_cursos.join(&nombre_curso);
-    let ruta_info = ruta_curso.join("curso-info0.json");
+    let ruta_cursantes = ruta_curso.join("cursantes");
+    
+    if !ruta_cursantes.exists() {
+        return Err(format!("No hay cursantes con registro en '{}'", nombre_curso));
+    }
+    
+    let mut cursantes: Vec<(u32, String)> = Vec::new();
+    let entradas = fs::read_dir(&ruta_cursantes)
+        .map_err(|e| format!("Error al leer directorio de cursantes: {}", e))?;
+    
+    for entrada in entradas {
+        let entrada = entrada.map_err(|e| format!("Error al leer entrada: {}", e))?;
+        let ruta = entrada.path();
+        
+        if ruta.is_dir() {
+            if let Some(nombre) = ruta.file_name() {
+                let nombre_str = nombre.to_string_lossy().to_string();
+                if let Some(id_str) = nombre_str.split('-').next() {
+                    if let Ok(id) = id_str.parse::<u32>() {
+                        cursantes.push((id, nombre_str));
+                    }
+                }
+            }
+        }
+    }
+    
+    if cursantes.is_empty() {
+        return Err(format!("No hay cursantes con registro en '{}'", nombre_curso));
+    }
+    
+    cursantes.sort_by_key(|(id, _)| *id);
+    
+    let (id_cursante, nombre_cursante) = if let Some(arg) = cursante_arg {
+        let nombre = encontrar_cursante(&cursantes, arg)?;
+        let id = cursantes.iter()
+            .find(|(_, n)| n == &nombre)
+            .map(|(id, _)| *id)
+            .unwrap();
+        (id, nombre)
+    } else {
+        println!("\nCursantes con registro en '{}' ({}):", nombre_curso, cursantes.len());
+        for (id, nombre) in &cursantes {
+            println!("  [{}] {}", id, nombre);
+        }
+        
+        let input = match rl.readline("\nSeleccione cursante por ID (o Enter para salir): ") {
+            Ok(line) => line,
+            Err(_) => return Ok(()),
+        };
+        
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(());
+        }
+        
+        let id_seleccionado: u32 = input.parse()
+            .map_err(|_| "Se requiere ingresar un número válido".to_string())?;
+        
+        let nombre = encontrar_cursante(&cursantes, &id_seleccionado.to_string())?;
+        (id_seleccionado, nombre)
+    };
+    
+    let ruta_cursante = ruta_cursantes.join(&nombre_cursante);
+    let ruta_info = ruta_cursante.join("cursante-info0.json");
     
     let contenido = fs::read_to_string(&ruta_info)
         .map_err(|e| format!("Error al leer archivo: {}", e))?;
     
-    let mut json_curso: Value = serde_json::from_str(&contenido)
+    let mut json_cursante: Value = serde_json::from_str(&contenido)
         .map_err(|e| format!("Error al parsear JSON: {}", e))?;
-
+	
 	// Extraer metadatos para interpretar valores
-	let metadatos = json_curso.get("metadatos_campos").cloned();
-    
-    let datos = json_curso.get_mut("datos")
+	let metadatos = json_cursante.get("metadatos_campos").cloned();
+
+    let datos = json_cursante.get_mut("datos")
         .ok_or("JSON inválido: falta 'datos'")?;
     
-    let preguntas_json = include_str!("curso-preguntas.json");
+    let preguntas_json = include_str!("cursante-preguntas.json");
     let preguntas: Value = serde_json::from_str(preguntas_json)
         .map_err(|e| format!("Error al leer preguntas: {}", e))?;
     
@@ -97,7 +154,8 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
     
     loop {
         println!("\n════════════════════════════════════════════════════════════");
-        println!("  Editando: {}", nombre_curso);
+        println!("  Editando: {}", nombre_cursante);
+        println!("  Curso: {}", nombre_curso);
         println!("────────────────────────────────────────────────────────────");
         
         let mut campos_editables: Vec<(usize, &str, &str, String)> = Vec::new();
@@ -109,12 +167,6 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
             
             if campo_nombre == "id" {
                 continue;
-            }
-            
-            if let Some(condicion) = campo.get("condicion") {
-                if !evaluar_condicion(condicion, datos) {
-                    continue;
-                }
             }
             
 			let valor_actual = datos.get(campo_nombre).unwrap_or(&Value::Null);
@@ -138,7 +190,7 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
         let input = input.trim();
         
         if input.is_empty() {
-            println!("\nSe guardarán los cambios en {}.", nombre_curso);
+            println!("\nSe guardarán los cambios en {}.", nombre_cursante);
             let confirmacion = match rl.readline("¿Confirmar? (s/N): ") {
                 Ok(line) => line,
                 Err(_) => {
@@ -149,33 +201,29 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
             
             let conf = confirmacion.trim().to_lowercase();
             if conf == "s" || conf.is_empty() {
-                // Extraer nuevo nombre ANTES de serializar
                 let nuevo_nombre_opt = datos.get("nombre")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
                 
-                // Serializar JSON
-                let contenido = serde_json::to_string_pretty(&json_curso)
+                let contenido = serde_json::to_string_pretty(&json_cursante)
                     .map_err(|e| format!("Error al serializar JSON: {}", e))?;
                 
-                // Escribir archivo
                 fs::write(&ruta_info, contenido)
                     .map_err(|e| format!("Error al escribir archivo: {}", e))?;
                 
-                // Renombrar carpeta si cambió el nombre
                 if let Some(nuevo_nombre) = nuevo_nombre_opt {
                     let nuevo_nombre_kebab = a_kebab_case(&nuevo_nombre);
-                    let nuevo_nombre_carpeta = format!("{:03}-{}", id_curso, nuevo_nombre_kebab);
+                    let nuevo_nombre_carpeta = format!("{:03}-{}", id_cursante, nuevo_nombre_kebab);
                     
-                    if nuevo_nombre_carpeta != nombre_curso {
-                        let nueva_ruta = ruta_cursos.join(&nuevo_nombre_carpeta);
-                        fs::rename(&ruta_curso, &nueva_ruta)
+                    if nuevo_nombre_carpeta != nombre_cursante {
+                        let nueva_ruta = ruta_cursantes.join(&nuevo_nombre_carpeta);
+                        fs::rename(&ruta_cursante, &nueva_ruta)
                             .map_err(|e| format!("Error al renombrar carpeta: {}", e))?;
-                        println!("✓ Curso renombrado a: {}", nuevo_nombre_carpeta);
+                        println!("✓ Cursante se renombró a: {}", nuevo_nombre_carpeta);
                     }
                 }
                 
-                println!("✓ Curso actualizado correctamente.");
+                println!("✓ Cursante se actualizó correctamente.");
                 return Ok(());
             } else {
                 println!("Operación cancelada. No se guardaron cambios.");
@@ -184,7 +232,7 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
         }
         
         let seleccion: usize = input.parse()
-            .map_err(|_| "Se requiere ingresar un número válido".to_string())?;
+            .map_err(|_| "Debe ingresar un número válido".to_string())?;
         
         let campo_seleccionado = campos_editables.iter()
             .find(|(num, _, _, _)| *num == seleccion);
@@ -204,47 +252,123 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
         let tipo = campo_config["tipo"].as_str().unwrap();
         let obligatorio = campo_config["obligatorio"].as_bool().unwrap_or(false);
         
-        println!("\n▸ {}", etiqueta);
-        println!("Valor actual: {}", interpretar_valor(datos.get(*campo_nombre).unwrap_or(&Value::Null), metadatos.as_ref().and_then(|m| m.get(*campo_nombre))));
-        
-        // Prompt según si es obligatorio u opcional
-        let prompt = if obligatorio {
-            "Valor (Enter=mantener): ".to_string()
-        } else {
-            "Valor ('vaciar' para borrar): ".to_string()
-        };
-        
-        let valor = match tipo {
-            "str" => {
-                if *campo_nombre == "nombre" {
-                    preguntar_nombre_curso(&mut rl, false, &ruta_cursos, Some(id_curso), &prompt)?
-                } else {
-                    preguntar_texto_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?
-                }
-            }
-            "int" => preguntar_numero_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?,
-            "float" => preguntar_float_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?,
-            "fecha" => preguntar_fecha_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?,
-            "enum_int" => {
-                let opciones = campo_config["opciones"].as_object()
-                    .ok_or("Faltan opciones para enum")?;
-                preguntar_enum_con_valor_actual(&mut rl, opciones, datos.get(*campo_nombre), obligatorio, &prompt)?
-            }
-            "array_str" => {
-                let min_items = campo_config["min_items"].as_u64().unwrap_or(0) as usize;
-                preguntar_array_con_valor_actual(&mut rl, datos.get(*campo_nombre), min_items, obligatorio, &prompt)?
-            }
-            _ => return Err(format!("Tipo desconocido: {}", tipo)),
-        };
-        
-        // Actualizar valor
-        if !valor.is_null() || obligatorio {
-            datos[*campo_nombre] = valor;
-            println!("✓ Campo actualizado.");
-        } else {
-            println!("⚠ Este campo es obligatorio. Se mantiene el valor actual.");
+		println!("\n▸ {}", etiqueta);
+		println!("Valor actual: {}", interpretar_valor(datos.get(*campo_nombre).unwrap_or(&Value::Null), metadatos.as_ref().and_then(|m| m.get(*campo_nombre))));
+
+		// Prompt corto según si es obligatorio u opcional
+		let prompt = if obligatorio {
+			"Valor (Enter=mantener): ".to_string()
+		} else {
+			"Valor ('vaciar' para borrar): ".to_string()
+		};
+
+		let valor = match tipo {
+			"str" => {
+				if *campo_nombre == "nombre" {
+					preguntar_nombre_cursante_con_valor_actual(&mut rl, &ruta_cursantes, Some(id_cursante), &prompt)?
+				} else {
+					preguntar_texto_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?
+				}
+			}
+			"int" => preguntar_numero_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?,
+			"float" => preguntar_float_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?,
+			"fecha" => preguntar_fecha_con_valor_actual(&mut rl, datos.get(*campo_nombre), obligatorio, &prompt)?,
+			"enum_int" => {
+				let opciones = campo_config["opciones"].as_object()
+					.ok_or("Faltan opciones para enum")?;
+				preguntar_enum_con_valor_actual(&mut rl, opciones, datos.get(*campo_nombre), obligatorio, &prompt)?
+			}
+			"array_str" => {
+				let min_items = campo_config["min_items"].as_u64().unwrap_or(0) as usize;
+				preguntar_array_con_valor_actual(&mut rl, datos.get(*campo_nombre), min_items, obligatorio, &prompt)?
+			}
+			_ => return Err(format!("Tipo desconocido: {}", tipo)),
+		};
+
+		// Actualizar valor
+		if valor.is_null() && obligatorio {
+			println!("⚠ Este campo es obligatorio. Se mantiene el valor actual.");
+		} else {
+			datos[*campo_nombre] = valor;
+			println!("✓ Campo actualizado.");
+		}
+    }
+}
+
+fn encontrar_cursante(cursantes: &[(u32, String)], argumento: &str) -> Result<String, String> {
+    if let Ok(id) = argumento.parse::<u32>() {
+        if let Some((_, nombre)) = cursantes.iter().find(|(cursante_id, _)| *cursante_id == id) {
+            return Ok(nombre.clone());
         }
     }
+    
+    if let Some((_, nombre)) = cursantes.iter().find(|(_, n)| n == argumento) {
+        return Ok(nombre.clone());
+    }
+    
+    Err(format!("No se encontró cursante con el identificador '{}'", argumento))
+}
+
+fn preguntar_nombre_cursante_con_valor_actual(
+    rl: &mut DefaultEditor,
+    ruta_cursantes: &Path,
+    excluir_id: Option<u32>,
+    prompt: &str,
+) -> Result<Value, String> {
+    let input = rl.readline(prompt)
+        .map_err(|e| format!("Error al leer entrada: {}", e))?;
+    
+    let valor = input.trim();
+    
+    if valor.is_empty() {
+        return Ok(Value::Null);
+    }
+    
+    let nombre_kebab = a_kebab_case(valor);
+    
+    if nombre_cursante_existe(ruta_cursantes, &nombre_kebab, excluir_id)? {
+        println!("⚠ Ya existe registro de cursante con el nombre '{}'. Se mantiene el valor actual.", valor);
+        return Ok(Value::Null);
+    }
+    
+    let _ = rl.add_history_entry(&input);
+    Ok(json!(valor))
+}
+
+fn nombre_cursante_existe(ruta_cursantes: &Path, nombre_kebab: &str, excluir_id: Option<u32>) -> Result<bool, String> {
+    if !ruta_cursantes.exists() {
+        return Ok(false);
+    }
+    
+    let entradas = fs::read_dir(ruta_cursantes)
+        .map_err(|e| format!("Error al leer directorio de cursantes: {}", e))?;
+    
+    for entrada in entradas {
+        let entrada = entrada.map_err(|e| format!("Error al leer entrada: {}", e))?;
+        
+        if entrada.path().is_dir() {
+            let nombre_completo = entrada.file_name();
+            let nombre_str = nombre_completo.to_string_lossy();
+            
+            let mut partes = nombre_str.splitn(2, '-');
+            let id_str = partes.next().unwrap_or("");
+            let nombre_sin_indice = partes.next().unwrap_or("").to_string();
+            
+            if let Some(excluir) = excluir_id {
+                if let Ok(id) = id_str.parse::<u32>() {
+                    if id == excluir {
+                        continue;
+                    }
+                }
+            }
+            
+            if nombre_sin_indice == nombre_kebab {
+                return Ok(true);
+            }
+        }
+    }
+    
+    Ok(false)
 }
 
 fn preguntar_texto_con_valor_actual(rl: &mut DefaultEditor, valor_actual: Option<&Value>, obligatorio: bool, prompt: &str) -> Result<Value, String> {
