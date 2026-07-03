@@ -5,6 +5,7 @@ use std::path::PathBuf;
 mod inspector;
 mod curso;
 mod cursante;
+mod archivo;
 
 // Templates de ayuda en español
 const HELP_CMD: &str = "\
@@ -72,6 +73,16 @@ enum Commands {
         #[command(subcommand)]
         action: CursanteAction,
     },
+
+	/// Gestión de archivos de datos
+	#[command(
+		help_template = HELP_CMD,
+		override_usage = "trazar archivo <COMANDO>"
+	)]
+	Archivo {
+		#[command(subcommand)]
+		action: ArchivoAction,
+	},
     
     /// Generar scripts de autocompletado
     #[command(
@@ -97,6 +108,21 @@ enum InspectorAction {
     /// Purgar toda la base de datos de usuario
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector purgar")]
     Purgar,
+    /// Validar archivos en datos/archivo/
+	#[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector validar")]
+	Validar {
+		/// Tipo de dataset (opcional)
+        tipo: Option<String>,
+    },
+    /// Consolidar archivos validados a datos/cursos/
+	#[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector consolidar")]
+    Consolidar {
+        /// ID o nombre del curso
+        #[arg(short = 'c', long = "curso")]
+        curso: String,
+        /// Tipo de dataset (opcional)
+        tipo: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -155,6 +181,104 @@ enum CursanteAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ArchivoAction {
+    /// Importar archivo crudo a datos/archivo/
+    #[command(
+        help_template = HELP_SUBCMD,
+        override_usage = "trazar archivo importar <TIPO> <ARCHIVO>",
+        long_about = "Importa un archivo crudo al directorio datos/archivo/<tipo>/.
+
+TIPOS VÁLIDOS:
+  asistencias    Archivo de registro de asistencias a clases
+  quizzes        Archivo de resultados de quizzes (próximamente)
+  asignaciones   Archivo de estados de asignaciones (próximamente)
+  pagos          Archivo de registros de pagos (próximamente)
+
+FORMATO DEL ARCHIVO DE ASISTENCIAS:
+
+El archivo debe tener cabeceras seguidas de un separador y las líneas de asistencia:
+
+  # log: asistencias
+  # curso: <nombre-del-curso>
+  # asignatura: <nombre-de-asignatura>
+  # clase: <numero>
+  # fecha_creacion: <YYYYMMDDTHHMMSS±Z>
+  # ====================
+  
+  x - Nombre Apellido Uno
+  s - Nombre Apellido Dos
+  x - Nombre Apellido Tres
+
+CAMPOS DE CABECERA:
+  - log:              Obligatorio. Debe ser 'asistencias'
+  - curso:            Opcional. Nombre del curso (se busca coincidencia con cursos registrados)
+  - asignatura:       Opcional. Nombre de asignatura (si se omite va a eventos-academicos)
+  - clase:            Opcional. Número de clase (también se puede extraer del nombre del archivo con patrón cNNN)
+  - fecha_creacion:   Opcional. Timestamp de creación en formato YYYYMMDDTHHMMSS±Z (ej: 20260702T193230-0500)
+
+LÍNEAS DE ASISTENCIA:
+  - Formato: [x|s|X|S] - <Nombre Completo>
+  - 'x' o 'X': ausente
+  - 's' o 'S': presente
+  - Se permiten líneas vacías y comentarios con #
+
+NOMBRE DEL ARCHIVO:
+  - Debe contener el patrón 'cNNN' (ej: asistencias-c036.txt)
+  - El número de clase se extrae de este patrón
+
+EJEMPLO DE USO:
+  trazar archivo importar asistencias asistencias-c036.txt",
+        after_help = "ESTRUCTURA DE DESTINO:
+  Con asignatura:  datos/archivo/asistencias/<id>-<nombre-kebab>/clase-<NNN>.txt
+  Sin asignatura:  datos/archivo/asistencias/curso-<ID>_clase-<NNN>.txt"
+    )]
+    Importar {
+        /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
+        #[arg(value_name = "TIPO")]
+        tipo: String,
+        /// Ruta(s) del archivo(s) a importar (acepta múltiples archivos, globs, o directorios)
+        #[arg(value_name = "ARCHIVO", required = true, num_args = 1..)]
+        archivos: Vec<String>,
+        /// Modo bloque: procesa todos los archivos sin preguntas interactivas
+        #[arg(short = 'b', long = "bloque")]
+        bloque: bool,
+    },
+    
+    /// Exportar datos consolidados
+    #[command(
+        help_template = HELP_SUBCMD,
+        override_usage = "trazar archivo exportar <TIPO>"
+    )]
+    Exportar {
+        /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
+        #[arg(value_name = "TIPO")]
+        tipo: String,
+    },
+    
+    /// Listar archivos en datos/archivo/
+    #[command(
+        help_template = HELP_SUBCMD,
+        override_usage = "trazar archivo mostrar [TIPO]"
+    )]
+    Mostrar {
+        /// Tipo de dataset (opcional, si se omite muestra todos)
+        #[arg(value_name = "TIPO")]
+        tipo: Option<String>,
+    },
+    
+    /// Remover archivo de datos/archivo/
+    #[command(
+        help_template = HELP_SUBCMD,
+        override_usage = "trazar archivo remover <ARCHIVO>"
+    )]
+    Remover {
+        /// Ruta o nombre del archivo a remover
+        #[arg(value_name = "ARCHIVO")]
+        archivo: String,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
     let ruta_base = obtener_ruta_base();
@@ -208,6 +332,18 @@ fn main() {
                         }
                     }
                 }
+				InspectorAction::Validar { tipo } => {
+					match inspector::validar(&ruta_base, tipo.as_deref()) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				InspectorAction::Consolidar { curso, tipo } => {
+					match inspector::consolidar(&ruta_base, &curso, tipo.as_deref()) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
             }
         }
         
@@ -280,6 +416,35 @@ fn main() {
                 }
             }
         }
+
+		Commands::Archivo { action } => {
+			match action {
+				ArchivoAction::Importar { tipo, archivos, bloque } => {
+					match archivo::importar(&ruta_base, &tipo, &archivos, bloque) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				ArchivoAction::Exportar { tipo } => {
+					match archivo::exportar(&ruta_base, &tipo) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				ArchivoAction::Mostrar { tipo } => {
+					match archivo::mostrar(&ruta_base, tipo.as_deref()) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				ArchivoAction::Remover { archivo } => {
+					match archivo::remover(&ruta_base, &archivo) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+			}
+		}
         
         Commands::Completions { shell, ruta } => {
             eprintln!("=== Instrucciones para autocompletado ===\n");

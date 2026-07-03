@@ -2,7 +2,11 @@
 	"directorios": [
 		"datos",
 		"datos/cursos",
-		"datos/entrada",
+		"datos/archivo",
+		"datos/archivo/asistencias",
+		"datos/archivo/quizzes",
+		"datos/archivo/asignaciones",
+		"datos/archivo/pagos",
 		"datos/salida"
 	]
 }

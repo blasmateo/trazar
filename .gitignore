@@ -26,6 +26,7 @@ _scripts/
 *.swp
 *.swo
 *~
+.clinerules
 
 # Sistema
 .DS_Store
