@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, CommandFactory};
+use clap::{Parser, Subcommand, CommandFactory, ValueEnum};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
 
@@ -6,6 +6,26 @@ mod inspector;
 mod curso;
 mod cursante;
 mod archivo;
+
+/// Tipos de dataset para importación/exportación (con autocompletado)
+#[derive(ValueEnum, Clone, Debug)]
+enum TipoDatasetCli {
+    Asistencias,
+    Quizzes,
+    Asignaciones,
+    Pagos,
+}
+
+impl std::fmt::Display for TipoDatasetCli {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TipoDatasetCli::Asistencias => write!(f, "asistencias"),
+            TipoDatasetCli::Quizzes => write!(f, "quizzes"),
+            TipoDatasetCli::Asignaciones => write!(f, "asignaciones"),
+            TipoDatasetCli::Pagos => write!(f, "pagos"),
+        }
+    }
+}
 
 // Templates de ayuda en español
 const HELP_CMD: &str = "\
@@ -183,17 +203,25 @@ enum CursanteAction {
 
 #[derive(Subcommand)]
 enum ArchivoAction {
-    /// Importar archivo crudo a datos/archivo/
+    /// Importar archivo crudo a datos/cursos/<id-curso>/archivo/
     #[command(
         help_template = HELP_SUBCMD,
-        override_usage = "trazar archivo importar <TIPO> <ARCHIVO>",
-        long_about = "Importa un archivo crudo al directorio datos/archivo/<tipo>/.
+        override_usage = "trazar archivo importar -t <TIPO> -r <RUTA>... [OPCIONES]",
+        long_about = "Importa uno o más archivos crudos al directorio datos/cursos/<id-curso>/archivo/asistencias/.
 
-TIPOS VÁLIDOS:
+TIPOS VÁLIDOS (-t, --tipo):
   asistencias    Archivo de registro de asistencias a clases
   quizzes        Archivo de resultados de quizzes (próximamente)
   asignaciones   Archivo de estados de asignaciones (próximamente)
   pagos          Archivo de registros de pagos (próximamente)
+
+RUTAS VÁLIDAS (-r, --ruta):
+  - Archivos individuales:  -r archivo1.txt archivo2.txt
+  - Directorios:            -r ./carpeta-con-archivos/
+  - Globs (expandidos por el shell):  -r *.txt
+
+OPCIONES:
+  -s, --si         Importa solo los archivos válidos sin preguntar (auto-afirmación)
 
 FORMATO DEL ARCHIVO DE ASISTENCIAS:
 
@@ -212,13 +240,13 @@ El archivo debe tener cabeceras seguidas de un separador y las líneas de asiste
 
 CAMPOS DE CABECERA:
   - log:              Obligatorio. Debe ser 'asistencias'
-  - curso:            Opcional. Nombre del curso (se busca coincidencia con cursos registrados)
+  - curso:            Opcional. Nombre del curso (debe coincidir exactamente con curso registrado)
   - asignatura:       Opcional. Nombre de asignatura (si se omite va a eventos-academicos)
   - clase:            Opcional. Número de clase (también se puede extraer del nombre del archivo con patrón cNNN)
   - fecha_creacion:   Opcional. Timestamp de creación en formato YYYYMMDDTHHMMSS±Z (ej: 20260702T193230-0500)
 
 LÍNEAS DE ASISTENCIA:
-  - Formato: [x|s|X|S] - <Nombre Completo>
+  - Formato estricto: [x|s|X|S] - <Nombre Completo> (requiere x/s/S/X)
   - 'x' o 'X': ausente
   - 's' o 'S': presente
   - Se permiten líneas vacías y comentarios con #
@@ -227,22 +255,34 @@ NOMBRE DEL ARCHIVO:
   - Debe contener el patrón 'cNNN' (ej: asistencias-c036.txt)
   - El número de clase se extrae de este patrón
 
-EJEMPLO DE USO:
-  trazar archivo importar asistencias asistencias-c036.txt",
+EJEMPLOS DE USO:
+  # Importar un solo archivo
+  trazar archivo importar -t asistencias -r asistencias-c036.txt
+
+  # Importar múltiples archivos
+  trazar archivo importar -t asistencias -r clase-001.txt clase-002.txt
+
+  # Importar directorio completo (sin preguntar)
+  trazar archivo importar -t asistencias -r ./asistencias/ -s
+
+  # Importar con glob (el shell expande los *.txt)
+  trazar archivo importar -t asistencias -r *.txt -s",
         after_help = "ESTRUCTURA DE DESTINO:
-  Con asignatura:  datos/archivo/asistencias/<id>-<nombre-kebab>/clase-<NNN>.txt
-  Sin asignatura:  datos/archivo/asistencias/curso-<ID>_clase-<NNN>.txt"
+  Con asignatura:  datos/cursos/<id-curso>/archivo/asistencias/<id>-<nombre-kebab>/clase-<NNN>.txt
+  Sin asignatura:  datos/cursos/<id-curso>/archivo/asistencias/clase-<NNN>.txt
+
+NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
     )]
     Importar {
         /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
-        #[arg(value_name = "TIPO")]
-        tipo: String,
+        #[arg(short = 't', long = "tipo", value_name = "TIPO", required = true)]
+        tipo: TipoDatasetCli,
         /// Ruta(s) del archivo(s) a importar (acepta múltiples archivos, globs, o directorios)
-        #[arg(value_name = "ARCHIVO", required = true, num_args = 1..)]
+        #[arg(short = 'r', long = "ruta", value_name = "RUTA", required = true, num_args = 1..)]
         archivos: Vec<String>,
-        /// Modo bloque: procesa todos los archivos sin preguntas interactivas
-        #[arg(short = 'b', long = "bloque")]
-        bloque: bool,
+        /// Auto-afirmación: importa solo los archivos válidos sin preguntar
+        #[arg(short = 's', long = "si")]
+        si: bool,
     },
     
     /// Exportar datos consolidados
@@ -417,10 +457,11 @@ fn main() {
             }
         }
 
-		Commands::Archivo { action } => {
-			match action {
-				ArchivoAction::Importar { tipo, archivos, bloque } => {
-					match archivo::importar(&ruta_base, &tipo, &archivos, bloque) {
+			Commands::Archivo { action } => {
+				match action {
+					ArchivoAction::Importar { tipo, archivos, si } => {
+						let tipo_str = tipo.to_string();
+						match archivo::importar(&ruta_base, &tipo_str, &archivos, si) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}

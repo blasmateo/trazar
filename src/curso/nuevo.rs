@@ -56,6 +56,7 @@ pub fn ejecutar(ruta_base: &Path) -> Result<(), String> {
             }
             "int" => preguntar_numero(&mut rl, obligatorio)?,
             "float" => preguntar_float(&mut rl, obligatorio)?,
+            "costo" => preguntar_costo(&mut rl, obligatorio)?,
             "fecha" => preguntar_fecha(&mut rl, obligatorio)?,
             "enum_int" => {
                 let opciones = campo["opciones"].as_object()
@@ -105,9 +106,17 @@ pub fn ejecutar(ruta_base: &Path) -> Result<(), String> {
         if campo["tipo"] == "enum_int" {
             meta["tipo"] = json!("enum");
             meta["valores"] = campo["opciones"].clone();
-        } else if (campo["tipo"] == "int" || campo["tipo"] == "float") && campo_nombre == "costo" {
-            meta["tipo"] = json!("moneda");
-            meta["simbolo"] = json!("$");
+        } else if campo_nombre == "costo" {
+            let valor_costo = respuestas.get("costo");
+            if let Some(v) = valor_costo {
+                if v.is_number() {
+                    meta["tipo"] = json!("moneda");
+                    meta["simbolo"] = json!("$");
+                } else if let Some(s) = v.as_str() {
+                    meta["tipo"] = json!("texto_especial");
+                    meta["valor_especial"] = json!(s);
+                }
+            }
         }
         
         metadatos[campo_nombre] = meta;

@@ -89,6 +89,46 @@ pub fn preguntar_numero(rl: &mut DefaultEditor, obligatorio: bool) -> Result<Val
     }
 }
 
+/// Pregunta un valor de costo: número, "variable", "cantidad voluntaria" o "no aplica".
+pub fn preguntar_costo(rl: &mut DefaultEditor, obligatorio: bool) -> Result<Value, String> {
+    loop {
+        let input = rl.readline("> ")
+            .map_err(|e| format!("Error al leer entrada: {}", e))?;
+        
+        let valor = input.trim().to_lowercase();
+        
+        if valor.is_empty() {
+            if obligatorio {
+                println!("Este campo es obligatorio. Intente nuevamente.");
+                continue;
+            } else {
+                return Ok(Value::Null);
+            }
+        }
+        
+        // Valores especiales de texto
+        if valor == "variable" || valor == "cantidad voluntaria" || valor == "no aplica" {
+            let _ = rl.add_history_entry(&input);
+            return Ok(json!(valor));
+        }
+        
+        // Número (con o sin decimales)
+        match valor.parse::<f64>() {
+            Ok(num) => {
+                if num >= 0.0 {
+                    let _ = rl.add_history_entry(&input);
+                    return Ok(json!(num));
+                } else {
+                    println!("El monto no puede ser negativo. Intente nuevamente.");
+                }
+            }
+            Err(_) => {
+                println!("Valor inválido. Use un número, 'variable', 'cantidad voluntaria' o 'no aplica'.");
+            }
+        }
+    }
+}
+
 /// Pregunta un número con decimales.
 pub fn preguntar_float(rl: &mut DefaultEditor, obligatorio: bool) -> Result<Value, String> {
     loop {
@@ -249,6 +289,14 @@ pub fn evaluar_condicion(condicion: &Value, respuestas: &Value) -> bool {
         }
         "==" => valor_actual == valor_esperado,
         "!=" => valor_actual != valor_esperado,
+        "no_es_no_aplica" => {
+            if let Some(s) = valor_actual.as_str() {
+                s != "no aplica"
+            } else {
+                // Si es número (costo numérico > 0), se pregunta periodicidad
+                valor_actual.as_f64().unwrap_or(0.0) >= 0.0
+            }
+        }
         ">=" => {
             let actual = valor_actual.as_f64().unwrap_or(0.0);
             let esperado = valor_esperado.as_f64().unwrap_or(0.0);

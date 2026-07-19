@@ -50,7 +50,7 @@
 		},
 		{
 			"campo": "costo",
-			"tipo": "float",
+			"tipo": "costo",
 			"mensaje": "Pago (USD) por período",
 			"obligatorio": true
 		},
@@ -70,7 +70,7 @@
 			"obligatorio": true,
 			"condicion": {
 				"campo": "costo",
-				"operador": ">",
+				"operador": "no_es_no_aplica",
 				"valor": 0
 			}
 		}

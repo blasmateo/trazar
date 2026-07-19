@@ -44,6 +44,13 @@ datos/
 │       ├── cursantes/
 │       │   └── <ID>-<nombre-cursante>/
 │       │       └── cursante-info0.json
+│       ├── archivo/
+│       │   ├── asistencias/
+│       │   │   ├── <ID>-<nombre-asignatura>
+│       │   │   └── clase-<NNN>.txt
+│       │   ├── quizzes/
+│       │   ├── asignaciones/
+│       │   └── pagos/
 │       ├── asignaturas/
 │       │   └── <ID>-<nombre-asignatura>/
 │       │       ├── asistencias.json
@@ -58,14 +65,7 @@ datos/
 │           │   └── cursante-<ID>-<YYYYMMDD>-<YYYYMMDD>-sec<NNN>.png
 │           └── pagos.json
 │
-├── archivo/
-│   ├── asistencias/
-│   │   └── <ID>-<nombre-asignatura>/
-│   │       └── clase-<NNN>.txt
-│   ├── quizzes/
-│   ├── asignaciones/
-│   └── pagos/
-│
+├── entrada/
 └── salida/
     └── reportes/
 ```
@@ -107,18 +107,17 @@ trazar completions <SHELL> [RUTA]        # Generar autocompletado
 ### Flujo de Importación de Datos
 
 1. **Importar**: `trazar archivo importar asistencias archivo.txt`
-   - Valida formato básico del archivo
-   - Extrae metadata de cabeceras (curso, asignatura, clase)
-   - Copia archivo a `datos/archivo/<tipo>/`
+    - Valida formato estricto del archivo (requiere `x - Nombre` o `s - Nombre`)
+    - Detecta automáticamente curso y asignatura por cabeceras
+    - Coincidencia exacta del nombre del curso (kebab-case)
+    - Si hay errores de formato, pregunta si importar solo los válidos
+    - Copia archivo directamente a `datos/cursos/<id-curso>/archivo/asistencias/`
+    - Maneja BOM invisible en archivos UTF-8
 
 2. **Validar**: `trazar inspector validar asistencias`
-   - Valida formato semántico
-   - Verifica que cursantes existan
-   - Detecta errores
-
-3. **Consolidar**: `trazar inspector consolidar -c 1 asistencias`
-   - Mueve datos validados a `datos/cursos/<curso>/`
-   - Actualiza JSONs consolidados
+    - Valida formato semántico de archivos importados
+    - Verifica cabeceras obligatorias
+    - Detecta errores de formato
 
 ### Formato de Archivos de Asistencias
 
@@ -143,7 +142,7 @@ x - Nombre Apellido Tres
 - `fecha_creacion`: Opcional, timestamp ISO
 
 **Líneas de asistencia:**
-- Formato: `[x|s|X|S] - <Nombre Completo>`
+- Formato: `[x|s|X|S] - <Nombre Completo>` (estricto: requiere x/s/S/X)
 - `x`/`X`: ausente
 - `s`/`S`: presente
 
