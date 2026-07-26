@@ -87,7 +87,7 @@ fn listar_archivos_en_asignatura(ruta: &Path, total: &mut usize) -> Result<(), S
         if ruta_item.is_file() {
             *total += 1;
             if let Some(nombre) = ruta_item.file_name() {
-                println!("      └─ {}", nombre.to_string_lossy());
+                println!("  │  └─ {}", nombre.to_string_lossy());
             }
         }
     }
