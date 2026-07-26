@@ -307,15 +307,15 @@ NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
         tipo: Option<String>,
     },
     
-    /// Remover archivo de datos/archivo/
+    /// Remover archivo de datos/cursos/<curso>/archivo/
     #[command(
         help_template = HELP_SUBCMD,
-        override_usage = "trazar archivo remover <ARCHIVO>"
+        override_usage = "trazar archivo remover [ARCHIVO...]"
     )]
     Remover {
-        /// Ruta o nombre del archivo a remover
-        #[arg(value_name = "ARCHIVO")]
-        archivo: String,
+        /// Rutas o nombres de archivos a remover (si se omite, modo interactivo)
+        #[arg(value_name = "ARCHIVO", num_args = 0..)]
+        archivos: Vec<String>,
     },
 }
 
@@ -478,8 +478,13 @@ fn main() {
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
 				}
-				ArchivoAction::Remover { archivo } => {
-					match archivo::remover(&ruta_base, &archivo) {
+				ArchivoAction::Remover { archivos } => {
+					let rutas = if archivos.is_empty() {
+						None
+					} else {
+						Some(archivos.as_slice())
+					};
+					match archivo::remover(&ruta_base, rutas) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
