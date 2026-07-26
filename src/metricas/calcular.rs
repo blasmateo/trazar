@@ -1,5 +1,6 @@
 use serde_json::json;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::Path;
 use rustyline::DefaultEditor;
 
@@ -320,6 +321,32 @@ fn procesar_archivo_asistencia(
     Ok(())
 }
 
+/// Envía texto a través del paginador (less -F) si está disponible,
+/// o lo imprime directamente si no.
+fn paginar(salida: &str) {
+    // Intentar usar less -F (que automáticamente no pagina si cabe en pantalla)
+    let mut child = match std::process::Command::new("less")
+        .args(["-F", "-R", "-X"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => {
+            // Si no hay less, imprimir directamente
+            print!("{}", salida);
+            return;
+        }
+    };
+    
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(salida.as_bytes());
+        // Cerramos stdin para que less sepa que no hay más datos
+        drop(stdin);
+    }
+    
+    let _ = child.wait();
+}
+
 fn mostrar_lista(resultado: &ResultadoAsistencias) {
     println!();
     println!("═══════════════════════════════════════════════════════════════════");
@@ -370,13 +397,15 @@ fn mostrar_lista(resultado: &ResultadoAsistencias) {
 }
 
 fn mostrar_tabla(resultado: &ResultadoAsistencias) {
-    println!();
-    println!("═══════════════════════════════════════════════════════════════════");
-    println!("  Tablas de Asistencias - {}", resultado.nombre_curso);
-    println!("═══════════════════════════════════════════════════════════════════");
+    let mut salida = String::new();
+    
+    salida.push_str("\n═══════════════════════════════════════════════════════════════════\n");
+    salida.push_str(&format!("  Tablas de Asistencias - {}\n", resultado.nombre_curso));
+    salida.push_str("═══════════════════════════════════════════════════════════════════\n");
     
     if resultado.total_clases == 0 {
-        println!("ℹ No hay datos de asistencia registrados.");
+        salida.push_str("ℹ No hay datos de asistencia registrados.\n");
+        paginar(&salida);
         return;
     }
     
@@ -402,12 +431,12 @@ fn mostrar_tabla(resultado: &ResultadoAsistencias) {
             .then_with(|| a.clase.cmp(&b.clase))
         });
         
-        println!();
-        println!("┌{}┐", "─".repeat(ancho_interior));
-        println!("│ Cursante: {}", metricas.nombre);
-        println!("│ Total: {}, Si: {}, No: {}", metricas.asistencias.len(), presente, ausente);
-        println!("├{}┤", "─".repeat(ancho_interior));
-        println!("│ Asignatura{}Clase{}Asiste", " ".repeat(18), " ".repeat(6));
+        salida.push('\n');
+        salida.push_str(&format!("┌{}┐\n", "─".repeat(ancho_interior)));
+        salida.push_str(&format!("│ Cursante: {}\n", metricas.nombre));
+        salida.push_str(&format!("│ Total: {}, Si: {}, No: {}\n", metricas.asistencias.len(), presente, ausente));
+        salida.push_str(&format!("├{}┤\n", "─".repeat(ancho_interior)));
+        salida.push_str(&format!("│ Asignatura{}Clase{}Asiste\n", " ".repeat(18), " ".repeat(6)));
         for asistencia in &todas_ordenadas {
             let estado = if asistencia.presente { "si" } else { "no" };
             let asig_mostrar = if asistencia.asignatura.is_empty() {
@@ -422,12 +451,14 @@ fn mostrar_tabla(resultado: &ResultadoAsistencias) {
                 asig_mostrar
             };
             
-            println!("│ {:<28}│{:>10}│{:>8}│", asig_trunc, asistencia.clase, estado);
+            salida.push_str(&format!("│ {:<28}│{:>10}│{:>8}│\n", asig_trunc, asistencia.clase, estado));
         }
-        println!("└{}┘", "─".repeat(ancho_interior));
+        salida.push_str(&format!("└{}┘\n", "─".repeat(ancho_interior)));
     }
     
-    println!("\n═══════════════════════════════════════════════════════════════════");
+    salida.push_str(&format!("\n═══════════════════════════════════════════════════════════════════\n"));
+    
+    paginar(&salida);
 }
 
 fn guardar_json(
@@ -619,18 +650,19 @@ fn mostrar_json_lista(datos: &serde_json::Value, nombre_curso: &str) -> Result<(
 
 fn mostrar_json_tabla(datos: &serde_json::Value, nombre_curso: &str) -> Result<(), String> {
     let ancho_interior = 52;
+    let mut salida = String::new();
     
-    println!();
-    println!("═══════════════════════════════════════════════════════════════════");
-    println!("  Tablas de Asistencias - {}", nombre_curso);
-    println!("═══════════════════════════════════════════════════════════════════");
+    salida.push('\n');
+    salida.push_str("═══════════════════════════════════════════════════════════════════\n");
+    salida.push_str(&format!("  Tablas de Asistencias - {}\n", nombre_curso));
+    salida.push_str("═══════════════════════════════════════════════════════════════════\n");
     
     if let Some(total) = datos.get("totalClases").and_then(|v| v.as_u64()) {
-        println!("\nTotal de clases: {}", total);
+        salida.push_str(&format!("\nTotal de clases: {}\n", total));
     }
     
     if let Some(fecha) = datos.get("fechaActualizacion").and_then(|v| v.as_str()) {
-        println!("Fecha de actualización: {}", fecha);
+        salida.push_str(&format!("Fecha de actualización: {}\n", fecha));
     }
     
     // Mostrar cursantes en tabla
@@ -643,12 +675,12 @@ fn mostrar_json_tabla(datos: &serde_json::Value, nombre_curso: &str) -> Result<(
                 let presente = info.get("presente").and_then(|v| v.as_u64()).unwrap_or(0);
                 let ausente = info.get("ausente").and_then(|v| v.as_u64()).unwrap_or(0);
                 
-                println!();
-                println!("┌{}┐", "─".repeat(ancho_interior));
-                println!("│ Cursante: {}", nombre);
-                println!("│ Total: {}, Si: {}, No: {}", presente + ausente, presente, ausente);
-                println!("├{}┤", "─".repeat(ancho_interior));
-                println!("│ Asignatura{}Clase{}Asiste", " ".repeat(18), " ".repeat(6));
+                salida.push('\n');
+                salida.push_str(&format!("┌{}┐\n", "─".repeat(ancho_interior)));
+                salida.push_str(&format!("│ Cursante: {}\n", nombre));
+                salida.push_str(&format!("│ Total: {}, Si: {}, No: {}\n", presente + ausente, presente, ausente));
+                salida.push_str(&format!("├{}┤\n", "─".repeat(ancho_interior)));
+                salida.push_str(&format!("│ Asignatura{}Clase{}Asiste\n", " ".repeat(18), " ".repeat(6)));
                 
                 // Mostrar detalle si existe
                 if let Some(detalle) = info.get("detalle").and_then(|v| v.as_array()) {
@@ -691,16 +723,18 @@ fn mostrar_json_tabla(datos: &serde_json::Value, nombre_curso: &str) -> Result<(
                                 asig_mostrar
                             };
                             
-                            println!("│ {:<28}│{:>10}│{:>8}│", asig_trunc, clase, estado);
+                            salida.push_str(&format!("│ {:<28}│{:>10}│{:>8}│\n", asig_trunc, clase, estado));
                         }
                     }
                 }
-                println!("└{}┘", "─".repeat(ancho_interior));
+                salida.push_str(&format!("└{}┘\n", "─".repeat(ancho_interior)));
             }
         }
     }
     
-    println!("\n═══════════════════════════════════════════════════════════════════");
+    salida.push_str(&format!("\n═══════════════════════════════════════════════════════════════════\n"));
+    
+    paginar(&salida);
     
     Ok(())
 }
