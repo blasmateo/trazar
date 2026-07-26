@@ -104,9 +104,10 @@ trazar archivo mostrar [TIPO]                         # Listar archivos
 trazar archivo remover [ARCHIVO...]                    # Remover archivo (modo interactivo si no se especifica)
 
 # Métricas
+trazar metricas mostrar -t <TIPO> [-m <MODO>]         # Mostrar métricas guardadas (lee JSON)
 trazar metricas calcular -t <TIPO> [-c <CURSANTE>] [-m <MODO>] [-a]  # Calcular estadísticas
   TIPOS VÁLIDOS (-t): asistencias, quizzes, asignaciones, pagos (completado automático)
-  OPCIONES:
+  OPCIONES (calcular y mostrar):
     -c, --cursante <CURSANTE>  Filtrar por cursante (solo muestra, no afecta JSON)
     -m, --modo <MODO>          lista (resumen) o tabla (detallado)
     -a, --actualizar           Guardar resultados en JSON (no afectado por filtro)

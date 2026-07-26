@@ -4,3 +4,4 @@
 mod calcular;
 
 pub use calcular::ejecutar as calcular;
+pub use calcular::mostrar as mostrar;

@@ -332,6 +332,16 @@ NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
 
 #[derive(Subcommand)]
 enum MetricasAction {
+    /// Mostrar métricas guardadas (lee JSON)
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar metricas mostrar -t <TIPO> [-m <MODO>]")]
+    Mostrar {
+        /// Tipo de dataset
+        #[arg(short = 't', long = "tipo", value_name = "TIPO")]
+        tipo: TipoDatasetCli,
+        /// Modo de visualización: tabla o lista
+        #[arg(short = 'm', long = "modo", value_name = "MODO", default_value = "lista")]
+        modo: ModoMetricas,
+    },
     /// Calcular métricas de asistencias
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar metricas calcular -t <TIPO> [-c <CURSANTE>] [-m <MODO>] [-a]")]
     Calcular {
@@ -543,6 +553,14 @@ fn main() {
 		
 		Commands::Metricas { action } => {
 			match action {
+				MetricasAction::Mostrar { tipo, modo } => {
+					let tipo_str = tipo.to_string();
+					let modo_str = modo.to_string();
+					match metricas::mostrar(&ruta_base, &tipo_str, &modo_str) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
 				MetricasAction::Calcular { tipo, cursante, modo, actualizar } => {
 					let tipo_str = tipo.to_string();
 					let modo_str = modo.to_string();

@@ -479,3 +479,228 @@ fn guardar_json(
     
     Ok(())
 }
+
+/// Muestra métricas guardadas leyendo el JSON
+pub fn mostrar(ruta_base: &Path, tipo_str: &str, modo_str: &str) -> Result<(), String> {
+    if tipo_str != "asistencias" {
+        return Err(format!("Visualización de '{}' aún no implementada. Solo 'asistencias' está disponible.", tipo_str));
+    }
+    
+    let ruta_cursos = ruta_base.join("datos/cursos");
+    
+    if !ruta_cursos.exists() {
+        return Err("No existe el directorio datos/cursos/".to_string());
+    }
+    
+    // Obtener lista de cursos
+    let cursos = obtener_cursos(&ruta_cursos)?;
+    
+    if cursos.is_empty() {
+        println!("ℹ No hay cursos registrados.");
+        return Ok(());
+    }
+    
+    // Seleccionar curso
+    let nombre_curso = if cursos.len() == 1 {
+        cursos[0].clone()
+    } else {
+        seleccionar_curso(&cursos)?
+    };
+    
+    // Buscar archivos de métricas
+    let ruta_metricas = ruta_cursos.join(&nombre_curso).join("metricas");
+    
+    if !ruta_metricas.exists() {
+        println!("ℹ No hay métricas guardadas para el curso '{}'.", nombre_curso);
+        println!("Use 'trazar metricas calcular -t asistencias -a' para generar métricas.");
+        return Ok(());
+    }
+    
+    // Buscar archivo según modo
+    let mut ruta_archivo = match modo_str {
+        "tabla" => ruta_metricas.join("asistencias-tabla.json"),
+        _ => ruta_metricas.join("asistencias-resumen.json"),
+    };
+    
+    if !ruta_archivo.exists() {
+        // Fallback al otro archivo si el específico no existe
+        let fallback = if modo_str == "tabla" {
+            ruta_metricas.join("asistencias-resumen.json")
+        } else {
+            ruta_metricas.join("asistencias-tabla.json")
+        };
+        
+        if fallback.exists() {
+            println!("ℹ Archivo '{}' no encontrado. Usando '{}' en su lugar.",
+                     ruta_archivo.file_name().unwrap_or_default().to_string_lossy(),
+                     fallback.file_name().unwrap_or_default().to_string_lossy());
+            ruta_archivo = fallback;
+        } else {
+            return Err("No se encontró archivo de métricas. Ejecute 'trazar metricas calcular -t asistencias -a' primero.".to_string());
+        }
+    }
+    
+    // Leer y parsear JSON
+    let contenido = std::fs::read_to_string(&ruta_archivo)
+        .map_err(|e| format!("Error al leer archivo {}: {}", ruta_archivo.display(), e))?;
+    
+    let datos: serde_json::Value = serde_json::from_str(&contenido)
+        .map_err(|e| format!("Error al parsear JSON: {}", e))?;
+    
+    // Mostrar datos según modo
+    match modo_str {
+        "tabla" => mostrar_json_tabla(&datos, &nombre_curso)?,
+        _ => mostrar_json_lista(&datos, &nombre_curso)?,
+    }
+    
+    Ok(())
+}
+
+fn mostrar_json_lista(datos: &serde_json::Value, nombre_curso: &str) -> Result<(), String> {
+    println!();
+    println!("═══════════════════════════════════════════════════════════════════");
+    println!("  Métricas Guardadas - {}", nombre_curso);
+    println!("═══════════════════════════════════════════════════════════════════");
+    
+    // Mostrar información general
+    if let Some(total) = datos.get("totalClases").and_then(|v| v.as_u64()) {
+        println!("\nTotal de clases: {}", total);
+    }
+    
+    if let Some(fecha) = datos.get("fechaActualizacion").and_then(|v| v.as_str()) {
+        println!("Fecha de actualización: {}", fecha);
+    }
+    
+    // Mostrar cursantes
+    if let Some(cursantes) = datos.get("cursantes").and_then(|v| v.as_object()) {
+        println!("\n───────────────────────────────────────────────────────────────");
+        println!("  Cursantes ({}):", cursantes.len());
+        println!("───────────────────────────────────────────────────────────────");
+        
+        let mut nombres: Vec<_> = cursantes.keys().collect();
+        nombres.sort();
+        
+        for nombre in nombres {
+            if let Some(info) = cursantes.get(nombre) {
+                let presente = info.get("presente").and_then(|v| v.as_u64()).unwrap_or(0);
+                let ausente = info.get("ausente").and_then(|v| v.as_u64()).unwrap_or(0);
+                let total = presente + ausente;
+                let porcentaje = if total > 0 {
+                    (presente as f64 / total as f64 * 100.0).round()
+                } else {
+                    0.0
+                };
+                
+                println!("\n  ▸ {}:", nombre);
+                println!("      Presente: {} | Ausente: {} | % Asistencia: {}%", 
+                         presente, ausente, porcentaje);
+                
+                // Mostrar detalle si existe
+                if let Some(detalle) = info.get("detalle").and_then(|v| v.as_array()) {
+                    if !detalle.is_empty() {
+                        println!("      Detalle de asistencias:");
+                        for asis in detalle {
+                            let asig = asis.get("asignatura").and_then(|v| v.as_str()).unwrap_or("N/A");
+                            let clase = asis.get("clase").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let presente = asis.get("presente").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let estado = if presente { "si" } else { "no" };
+                            println!("        - {} (clase {}): {}", asig, clase, estado);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    println!("\n═══════════════════════════════════════════════════════════════════");
+    
+    Ok(())
+}
+
+fn mostrar_json_tabla(datos: &serde_json::Value, nombre_curso: &str) -> Result<(), String> {
+    let ancho_interior = 52;
+    
+    println!();
+    println!("═══════════════════════════════════════════════════════════════════");
+    println!("  Tablas de Asistencias - {}", nombre_curso);
+    println!("═══════════════════════════════════════════════════════════════════");
+    
+    if let Some(total) = datos.get("totalClases").and_then(|v| v.as_u64()) {
+        println!("\nTotal de clases: {}", total);
+    }
+    
+    if let Some(fecha) = datos.get("fechaActualizacion").and_then(|v| v.as_str()) {
+        println!("Fecha de actualización: {}", fecha);
+    }
+    
+    // Mostrar cursantes en tabla
+    if let Some(cursantes) = datos.get("cursantes").and_then(|v| v.as_object()) {
+        let mut nombres: Vec<_> = cursantes.keys().collect();
+        nombres.sort();
+        
+        for nombre in nombres {
+            if let Some(info) = cursantes.get(nombre) {
+                let presente = info.get("presente").and_then(|v| v.as_u64()).unwrap_or(0);
+                let ausente = info.get("ausente").and_then(|v| v.as_u64()).unwrap_or(0);
+                
+                println!();
+                println!("┌{}┐", "─".repeat(ancho_interior));
+                println!("│ Cursante: {}", nombre);
+                println!("│ Total: {}, Si: {}, No: {}", presente + ausente, presente, ausente);
+                println!("├{}┤", "─".repeat(ancho_interior));
+                println!("│ Asignatura{}Clase{}Asiste", " ".repeat(18), " ".repeat(6));
+                
+                // Mostrar detalle si existe
+                if let Some(detalle) = info.get("detalle").and_then(|v| v.as_array()) {
+                    if !detalle.is_empty() {
+                        // Ordenar detalle por asignatura y clase
+                        let mut detalle_ordenado: Vec<&serde_json::Value> = detalle.iter().collect();
+                        detalle_ordenado.sort_by(|a, b| {
+                            let asig_a = a.get("asignatura").and_then(|v| v.as_str()).unwrap_or("");
+                            let asig_b = b.get("asignatura").and_then(|v| v.as_str()).unwrap_or("");
+                            let id_a = asig_a.split('-').next().and_then(|s| s.parse::<u32>().ok());
+                            let id_b = asig_b.split('-').next().and_then(|s| s.parse::<u32>().ok());
+                            match (id_a, id_b) {
+                                (Some(na), Some(nb)) => na.cmp(&nb),
+                                (Some(_), None) => std::cmp::Ordering::Less,
+                                (None, Some(_)) => std::cmp::Ordering::Greater,
+                                (None, None) => asig_a.cmp(asig_b),
+                            }
+                            .then_with(|| {
+                                let clase_a = a.get("clase").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let clase_b = b.get("clase").and_then(|v| v.as_u64()).unwrap_or(0);
+                                clase_a.cmp(&clase_b)
+                            })
+                        });
+                        
+                        for asis in detalle_ordenado {
+                            let asig = asis.get("asignatura").and_then(|v| v.as_str()).unwrap_or("");
+                            let clase = asis.get("clase").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let presente = asis.get("presente").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let estado = if presente { "si" } else { "no" };
+                            
+                            let asig_mostrar = if asig.is_empty() {
+                                "eventos-academicos".to_string()
+                            } else {
+                                asig.to_string()
+                            };
+                            
+                            let asig_trunc = if asig_mostrar.len() > 28 {
+                                format!("{}...", &asig_mostrar[..25])
+                            } else {
+                                asig_mostrar
+                            };
+                            
+                            println!("│ {:<28}│{:>10}│{:>8}│", asig_trunc, clase, estado);
+                        }
+                    }
+                }
+                println!("└{}┘", "─".repeat(ancho_interior));
+            }
+        }
+    }
+    
+    println!("\n═══════════════════════════════════════════════════════════════════");
+    
+    Ok(())
+}
