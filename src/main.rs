@@ -6,6 +6,7 @@ mod inspector;
 mod curso;
 mod cursante;
 mod archivo;
+mod metricas;
 
 /// Tipos de dataset para importación/exportación (con autocompletado)
 #[derive(ValueEnum, Clone, Debug)]
@@ -102,6 +103,16 @@ enum Commands {
 	Archivo {
 		#[command(subcommand)]
 		action: ArchivoAction,
+	},
+	
+	/// Generar métricas y reportes
+	#[command(
+		help_template = HELP_CMD,
+		override_usage = "trazar metricas <COMANDO>"
+	)]
+	Metricas {
+		#[command(subcommand)]
+		action: MetricasAction,
 	},
     
     /// Generar scripts de autocompletado
@@ -319,6 +330,44 @@ NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
     },
 }
 
+#[derive(Subcommand)]
+enum MetricasAction {
+    /// Calcular métricas de asistencias
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar metricas calcular -t <TIPO> [-c <CURSANTE>] [-m <MODO>] [-a]")]
+    Calcular {
+        /// Tipo de dataset
+        #[arg(short = 't', long = "tipo", value_name = "TIPO")]
+        tipo: TipoDatasetCli,
+        /// Cursante a filtrar (opcional)
+        #[arg(short = 'c', long = "cursante", value_name = "CURSANTE")]
+        cursante: Option<String>,
+        /// Modo de visualización: tabla o lista
+        #[arg(short = 'm', long = "modo", value_name = "MODO", default_value = "lista")]
+        modo: ModoMetricas,
+        /// Actualizar archivo JSON de métricas
+        #[arg(short = 'a', long = "actualizar")]
+        actualizar: bool,
+    },
+}
+
+/// Modos de visualización para métricas
+#[derive(ValueEnum, Clone, Debug)]
+enum ModoMetricas {
+    /// Vista en tabla (asignatura, clase, asiste)
+    Tabla,
+    /// Vista en lista resumida
+    Lista,
+}
+
+impl std::fmt::Display for ModoMetricas {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModoMetricas::Tabla => write!(f, "tabla"),
+            ModoMetricas::Lista => write!(f, "lista"),
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let ruta_base = obtener_ruta_base();
@@ -456,9 +505,9 @@ fn main() {
                 }
             }
         }
-
-			Commands::Archivo { action } => {
-				match action {
+		
+		Commands::Archivo { action } => {
+			match action {
 					ArchivoAction::Importar { tipo, archivos, si } => {
 						let tipo_str = tipo.to_string();
 						match archivo::importar(&ruta_base, &tipo_str, &archivos, si) {
@@ -485,6 +534,20 @@ fn main() {
 						Some(archivos.as_slice())
 					};
 					match archivo::remover(&ruta_base, rutas) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+			}
+		}
+		
+		Commands::Metricas { action } => {
+			match action {
+				MetricasAction::Calcular { tipo, cursante, modo, actualizar } => {
+					let tipo_str = tipo.to_string();
+					let modo_str = modo.to_string();
+					let cursante_filtro = cursante.as_deref();
+					match metricas::calcular(&ruta_base, &tipo_str, cursante_filtro, &modo_str, actualizar) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}

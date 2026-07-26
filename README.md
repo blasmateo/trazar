@@ -27,11 +27,13 @@ src/
 │   ├── mostrar.rs       # Ver cursantes
 │   ├── editar.rs        # Editar cursante
 │   └── remover.rs       # Eliminar cursantes
-└── archivo/             # Gestión de archivos de datos
-    ├── importar.rs      # Importar archivos crudos
-    ├── exportar.rs      # Exportar datos consolidados
-    ├── mostrar.rs       # Listar archivos
-    └── remover.rs       # Remover archivos
+├── archivo/             # Gestión de archivos de datos
+│   ├── importar.rs      # Importar archivos crudos
+│   ├── exportar.rs      # Exportar datos consolidados
+│   ├── mostrar.rs       # Listar archivos
+│   └── remover.rs       # Remover archivos
+└── metricas/            # Generación de métricas
+    └── calcular.rs      # Calcular estadísticas
 ```
 
 ### Estructura de Datos
@@ -46,8 +48,9 @@ datos/
 │       │       └── cursante-info0.json
 │       ├── archivo/
 │       │   ├── asistencias/
-│       │   │   ├── <ID>-<nombre-asignatura>
-│       │   │   └── clase-<NNN>.txt
+│       │   │   ├── <ID>-<nombre-asignatura>/
+│       │   │   │   └── clase-<NNN>.txt
+│       │   │   └── clase-<NNN>.txt (sin asignatura)
 │       │   ├── quizzes/
 │       │   ├── asignaciones/
 │       │   └── pagos/
@@ -95,10 +98,18 @@ trazar cursante [-c <ID>] editar [-i <ID>]   # Editar cursante
 trazar cursante [-c <ID>] remover [-i <ID>...] # Eliminar cursantes
 
 # Archivo
-trazar archivo importar <TIPO> <ARCHIVO> # Importar archivo crudo
-trazar archivo exportar <TIPO>           # Exportar datos
-trazar archivo mostrar [TIPO]            # Listar archivos
-trazar archivo remover <ARCHIVO>         # Remover archivo
+trazar archivo importar -t <TIPO> -r <RUTA>... [-s]  # Importar (modo interactivo si hay errores)
+trazar archivo exportar <TIPO>                        # Exportar datos
+trazar archivo mostrar [TIPO]                         # Listar archivos
+trazar archivo remover [ARCHIVO...]                    # Remover archivo (modo interactivo si no se especifica)
+
+# Métricas
+trazar metricas calcular -t <TIPO> [-c <CURSANTE>] [-m <MODO>] [-a]  # Calcular estadísticas
+  TIPOS VÁLIDOS (-t): asistencias, quizzes, asignaciones, pagos (completado automático)
+  OPCIONES:
+    -c, --cursante <CURSANTE>  Filtrar por cursante (solo muestra, no afecta JSON)
+    -m, --modo <MODO>          lista (resumen) o tabla (detallado)
+    -a, --actualizar           Guardar resultados en JSON (no afectado por filtro)
 
 # Completions
 trazar completions <SHELL> [RUTA]        # Generar autocompletado
@@ -106,13 +117,14 @@ trazar completions <SHELL> [RUTA]        # Generar autocompletado
 
 ### Flujo de Importación de Datos
 
-1. **Importar**: `trazar archivo importar asistencias archivo.txt`
+1. **Importar**: `trazar archivo importar -t asistencias -r archivo.txt`
     - Valida formato estricto del archivo (requiere `x - Nombre` o `s - Nombre`)
     - Detecta automáticamente curso y asignatura por cabeceras
     - Coincidencia exacta del nombre del curso (kebab-case)
     - Si hay errores de formato, pregunta si importar solo los válidos
     - Copia archivo directamente a `datos/cursos/<id-curso>/archivo/asistencias/`
     - Maneja BOM invisible en archivos UTF-8
+    - Use `-s` para auto-afirmar (importar válidos sin preguntar)
 
 2. **Validar**: `trazar inspector validar asistencias`
     - Valida formato semántico de archivos importados
@@ -146,99 +158,6 @@ x - Nombre Apellido Tres
 - `x`/`X`: ausente
 - `s`/`S`: presente
 
-### Estructura JSON de Datos Consolidados
-
-#### Asistencias (`asistencias.json`)
-```json
-{
-  "dataset": "asistencias",
-  "version": 0,
-  "cursoId": 1,
-  "asignaturaId": null,
-  "clases": {
-    "clase-001": {
-      "cursante-001": "presente",
-      "cursante-002": "ausente"
-    }
-  }
-}
-```
-
-**Estados:** `presente`, `ausente`, `demora`, `justifica`
-
-#### Quizzes (`quizzes.json`)
-```json
-{
-  "dataset": "quizzes",
-  "version": 0,
-  "cursoId": 1,
-  "asignaturaId": 1,
-  "clases": {
-    "clase-001": {
-      "quiz-001": {
-        "cuestion": "Introducción a fábulas",
-        "respuestaCorrecta": "b",
-        "resultados": {
-          "cursante-001": 85,
-          "cursante-002": 92
-        }
-      }
-    }
-  }
-}
-```
-
-#### Asignaciones (`asignaciones.json`)
-```json
-{
-  "dataset": "asignaciones",
-  "version": 0,
-  "cursoId": 1,
-  "asignaturaId": null,
-  "asignaciones": {
-    "asignacion-001": {
-      "titulo": "Ensayo sobre fábulas",
-      "fechaInicio": "2026-06-15",
-      "fechaEntrega": "2026-06-20",
-      "fechaLimite": "2026-06-25",
-      "calificacionMaxima": 100,
-      "estadoCursantes": {
-        "cursante-001": {
-          "estado": "calificado",
-          "calificacion": 90,
-          "notas": "Buen trabajo"
-        }
-      }
-    }
-  }
-}
-```
-
-**Estados:** `pendiente`, `entregado`, `calificado`, `vencido`
-
-#### Pagos (`pagos.json`)
-```json
-{
-  "dataset": "pagos",
-  "version": 0,
-  "cursoId": 1,
-  "cursantes": {
-    "cursante-001": {
-      "pago-001": {
-        "monto": 70.00,
-        "moneda": "USD",
-        "fechaRegistro": "2026-06-15T10:30:00-05:00",
-        "periodoInicio": "20260601",
-        "periodoFin": "20260731",
-        "tieneComprobante": true,
-        "rutaComprobante": "comprobantes/cursante-001-20260601-20260731-sec001.png",
-        "notas": "Pago de junio y julio"
-      }
-    }
-  }
-}
-```
-
 ## Convenciones de Diseño
 
 ### IDs y Prefijos
@@ -247,7 +166,7 @@ x - Nombre Apellido Tres
 
 ### Nombres de Archivos
 - **JSON**: kebab-case (`asistencias.json`, `curso-info0.json`)
-- **Carpetas**: `<ID>-<nombre-kebab>` (`001-fabulas`, `001-nombre-apellido`)
+- **Carpetas**: `<ID>-<nombre-kebab>` (`001-categoria-ejemplo`, `001-nombre-apellido`)
 - **Comprobantes**: `cursante-<ID>-<YYYYMMDD>-<YYYYMMDD>-sec<NNN>.png`
 
 ### Claves JSON
@@ -280,19 +199,6 @@ Los IDs de cursantes son **inmutables**. Una vez asignados, nunca cambian. Esto 
    - Importar desde Google Forms (quizzes)
    - Importar desde sistemas de pago
    - Sincronización con calendarios
-
-### Tipos de Dataset Futuros
-
-- **Quizzes**: Actualmente en diseño, pendiente implementación de importación
-- **Asignaciones**: Actualmente en diseño, pendiente implementación de importación
-- **Pagos**: Actualmente en diseño, pendiente implementación de importación
-
-### Mejoras de UX
-
-- Autocompletado inteligente de nombres de cursantes
-- Búsqueda fuzzy en listas interactivas
-- Modo batch para operaciones masivas
-- Dashboard interactivo en terminal
 
 ## Dependencias Técnicas
 
