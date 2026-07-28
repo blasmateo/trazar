@@ -382,8 +382,9 @@ fn mostrar_lista(resultado: &ResultadoAsistencias) {
         let presente = metricas.asistencias.iter().filter(|a| a.presente).count();
         let ausente = metricas.asistencias.iter().filter(|a| !a.presente).count();
         
-        let porcentaje = if resultado.total_clases > 0 {
-            (presente as f64 / resultado.total_clases as f64 * 100.0).round()
+        let total_cursante = presente + ausente;
+        let porcentaje = if total_cursante > 0 {
+            (presente as f64 / total_cursante as f64 * 100.0).round()
         } else {
             0.0
         };

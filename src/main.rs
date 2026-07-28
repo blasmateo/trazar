@@ -407,28 +407,9 @@ fn main() {
                     }
                 }
                 InspectorAction::Purgar => {
-                    let mut rl = match rustyline::DefaultEditor::new() {
-                        Ok(editor) => editor,
-                        Err(e) => {
-                            eprintln!("✗ Error al inicializar editor: {}", e);
-                            return;
-                        }
-                    };
-                    
-                    match rl.readline("¿Confirma purgar todos los datos? (purgar-todo/N): ") {
-                        Ok(confirmacion) => {
-                            if confirmacion.trim() == "purgar-todo" {
-                                match inspector::purgar(&ruta_base) {
-                                    Ok(_) => println!("✓ Datos eliminados"),
-                                    Err(e) => eprintln!("✗ Error: {}", e),
-                                }
-                            } else {
-                                println!("Operación cancelada. No se borró nada.");
-                            }
-                        }
-                        Err(_) => {
-                            println!("\nOperación cancelada. No se borró nada.");
-                        }
+                    match inspector::purgar(&ruta_base) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("✗ Error: {}", e),
                     }
                 }
 				InspectorAction::Validar { tipo } => {
