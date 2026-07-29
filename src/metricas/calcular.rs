@@ -206,6 +206,124 @@ fn seleccionar_curso(cursos: &[String]) -> Result<String, String> {
     Err(format!("No se encontró curso con nombre '{}'", input))
 }
 
+fn a_kebab_case(texto: &str) -> String {
+    texto
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            match c {
+                'á' | 'à' | 'â' | 'ä' | 'ã' => 'a',
+                'é' | 'è' | 'ê' | 'ë' => 'e',
+                'í' | 'ì' | 'î' | 'ï' => 'i',
+                'ó' | 'ò' | 'ô' | 'ö' | 'õ' => 'o',
+                'ú' | 'ù' | 'û' | 'ü' => 'u',
+                'ñ' => 'n',
+                'ç' => 'c',
+                _ if c.is_alphanumeric() => c,
+                _ => '-',
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<&str>>()
+        .join("-")
+}
+
+fn verificar_cursantes_registrados(
+    ruta_cursos: &Path,
+    nombre_curso: &str,
+    total_cursantes: &mut HashMap<String, CursanteMetricas>,
+) -> Result<(), String> {
+    let ruta_curso = ruta_cursos.join(nombre_curso);
+    let ruta_cursantes = ruta_curso.join("cursantes");
+    
+    if !ruta_cursantes.exists() {
+        eprintln!("⚠ No existe el directorio de cursantes registrados.");
+        eprintln!("  Use 'trazar cursante -c <ID> nuevo' para registrar cursantes.\n");
+        total_cursantes.clear();
+        return Ok(());
+    }
+    
+    // Leer todos los cursantes registrados con su estado
+    let entradas = std::fs::read_dir(&ruta_cursantes)
+        .map_err(|e| format!("Error al leer directorio de cursantes: {}", e))?;
+    
+    let mut nombres_registrados: HashMap<String, (String, String)> = HashMap::new(); // kebab -> (nombre_original, estado)
+    
+    for entrada in entradas {
+        let entrada = entrada.map_err(|e| format!("Error al leer entrada: {}", e))?;
+        let ruta = entrada.path();
+        
+        if !ruta.is_dir() {
+            continue;
+        }
+        
+        let ruta_info = ruta.join("cursante-info0.json");
+        if !ruta_info.exists() {
+            continue;
+        }
+        
+        let contenido = std::fs::read_to_string(&ruta_info)
+            .map_err(|e| format!("Error al leer {}: {}", ruta_info.display(), e))?;
+        
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contenido) {
+            let nombre = json.get("datos").and_then(|d| d.get("nombre")).and_then(|n| n.as_str())
+                .or_else(|| json.get("datos").and_then(|d| d.get("usuario")).and_then(|n| n.as_str()));
+            
+            if let Some(nombre) = nombre {
+                let nombre_kebab = a_kebab_case(nombre);
+                let estado = json.get("datos").and_then(|d| d.get("estado"))
+                    .and_then(|e| e.as_i64()).map(|n| n.to_string()).unwrap_or_else(|| {
+                        // Fallback si es string
+                        json.get("datos").and_then(|d| d.get("estado"))
+                            .and_then(|e| e.as_str()).unwrap_or("1").to_string()
+                    });
+                nombres_registrados.insert(nombre_kebab, (nombre.to_string(), estado));
+            }
+        }
+    }
+    
+    // Verificar cada cursante de las asistencias contra los registrados
+    let nombres_asistencias: Vec<String> = total_cursantes.keys().cloned().collect();
+    let mut no_registrados: Vec<String> = Vec::new();
+    
+    for nombre_asistencia in &nombres_asistencias {
+        let nombre_kebab = a_kebab_case(nombre_asistencia);
+        
+        let info = nombres_registrados.iter().find(|(kebab, _)| **kebab == nombre_kebab);
+        
+        match info {
+            Some((_, (nombre_real, estado))) => {
+                // Estados excluidos: 0=retirado, 3=egresado, 4=suspenso
+                if estado == "0" || estado == "3" || estado == "4" {
+                    // Renombrar la clave agregando el estado entre paréntesis
+                    let etiquetas = [("0", "retirado"), ("3", "egresado"), ("4", "suspenso")];
+                    let etiqueta = etiquetas.iter().find(|(c, _)| *c == estado).map(|(_, e)| *e).unwrap_or("desconocido");
+                    let nombre_marcado = format!("{} ({})", nombre_real, etiqueta);
+                    if let Some(metricas) = total_cursantes.remove(nombre_asistencia) {
+                        total_cursantes.insert(nombre_marcado, metricas);
+                    }
+                }
+            }
+            None => {
+                no_registrados.push(nombre_asistencia.clone());
+                total_cursantes.remove(nombre_asistencia);
+            }
+        }
+    }
+    
+    if !no_registrados.is_empty() {
+        eprintln!("⚠ Los siguientes cursantes no tienen registro en el sistema:");
+        for nombre in &no_registrados {
+            eprintln!("  - {}", nombre);
+        }
+        eprintln!("  Use 'trazar cursante -c <ID> nuevo' para registrarlos.\n");
+    }
+    
+    Ok(())
+}
+
 fn calcular_asistencias(ruta_cursos: &Path, nombre_curso: &str) -> Result<ResultadoAsistencias, String> {
     let ruta_curso = ruta_cursos.join(nombre_curso);
     let ruta_asistencias = ruta_curso.join("archivo/asistencias");
@@ -217,6 +335,9 @@ fn calcular_asistencias(ruta_cursos: &Path, nombre_curso: &str) -> Result<Result
     if ruta_asistencias.exists() {
         procesar_directorio_asistencias(&ruta_asistencias, &mut total_cursantes, &mut total_clases, &mut clases_por_asignatura, "")?;
     }
+    
+    // Verificar que todos los cursantes tengan registro
+    verificar_cursantes_registrados(ruta_cursos, nombre_curso, &mut total_cursantes)?;
     
     Ok(ResultadoAsistencias {
         nombre_curso: nombre_curso.to_string(),
@@ -626,20 +747,6 @@ fn mostrar_json_lista(datos: &serde_json::Value, nombre_curso: &str) -> Result<(
                 println!("\n  ▸ {}:", nombre);
                 println!("      Presente: {} | Ausente: {} | % Asistencia: {}%", 
                          presente, ausente, porcentaje);
-                
-                // Mostrar detalle si existe
-                if let Some(detalle) = info.get("detalle").and_then(|v| v.as_array()) {
-                    if !detalle.is_empty() {
-                        println!("      Detalle de asistencias:");
-                        for asis in detalle {
-                            let asig = asis.get("asignatura").and_then(|v| v.as_str()).unwrap_or("N/A");
-                            let clase = asis.get("clase").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let presente = asis.get("presente").and_then(|v| v.as_bool()).unwrap_or(false);
-                            let estado = if presente { "si" } else { "no" };
-                            println!("        - {} (clase {}): {}", asig, clase, estado);
-                        }
-                    }
-                }
             }
         }
     }
