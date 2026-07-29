@@ -66,68 +66,203 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: &str, modo_str: &str, ruta_salida: &
         ruta_json
     };
     
-    // Resolver ruta del script Python: buscar el proyecto raíz caminando hacia arriba
-    // desde el directorio del ejecutable hasta encontrar scripts/exportar-docx/
-    let ruta_script = resolver_ruta_recurso(
-        ruta_base,
-        "scripts/exportar-docx/exportar_docx.py",
-    );
-    let ruta_script = match ruta_script {
-        Some(p) => p,
-        None => return Err(format!(
-            "No se encontró la herramienta externa scripts/exportar-docx/exportar_docx.py (buscado desde {} hacia arriba)",
-            ruta_base.display()
-        )),
-    };
-    
-    // Resolver intérprete de Python del .venv (mismo directorio raíz que el script)
-    let raiz_proyecto = ruta_script
-        .parent()              // .../scripts/exportar-docx/
-        .and_then(|p| p.parent()) // .../scripts/
-        .and_then(|p| p.parent()); // raíz del proyecto
-    let python_venv = raiz_proyecto
-        .map(|r| r.join(".venv/bin/python"))
-        .unwrap_or_else(|| ruta_base.join(".venv/bin/python"));
-    let python = if python_venv.exists() {
-        python_venv
-    } else {
-        std::path::PathBuf::from("python3")
-    };
-    
+    // Resolver la herramienta externa de exportación.
+    //
+    // Convención de DISTRIBUCIÓN (binario PyInstaller junto al ejecutable Rust):
+    //   <dir-ejecutable>/trazar
+    //   <dir-ejecutable>/_scripts/exportar-docx       # binario autocontenido
+    //
+    //   El binario empaqueta el intérprete Python y python-docx, por lo que NO
+    //   requiere Python instalado en la máquina destino.
+    //
+    // Convención de DESARROLLO (fallback):
+    //   <raíz-proyecto>/scripts/exportar-docx/exportar_docx.py
+    //   <raíz-proyecto>/.venv/bin/python
+    //
+    // Se busca primero el binario de distribución; si no existe, modo dev.
+    let dir_exe = ruta_base;
+
     // Normalizar la ruta de salida a absoluta
     let ruta_salida_abs = if Path::new(ruta_salida).is_absolute() {
         std::path::PathBuf::from(ruta_salida)
     } else {
         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join(ruta_salida)
     };
-    
-    // Invocar la herramienta externa
-    let salida = std::process::Command::new(&python)
-        .arg(&ruta_script)
-        .arg("--json").arg(&ruta_json_final)
-        .arg("--salida").arg(&ruta_salida_abs)
-        .arg("--modo").arg(modo_str)
-        .output()
-        .map_err(|e| format!("Error al ejecutar herramienta externa: {}", e))?;
-    
-    // Mostrar salida del script
-    if !salida.stdout.is_empty() {
-        print!("{}", String::from_utf8_lossy(&salida.stdout));
+
+    // Leer el JSON de métricas para embeberlo en el envelope del contrato
+    let datos_json = std::fs::read_to_string(&ruta_json_final)
+        .map_err(|e| format!("Error al leer métricas '{}': {}", ruta_json_final.display(), e))?;
+    let datos_valor: serde_json::Value = serde_json::from_str(&datos_json)
+        .map_err(|e| format!("Métricas '{}' no es JSON válido: {}", ruta_json_final.display(), e))?;
+
+    // Envelope del contrato IPC (se envía por stdin)
+    let envelope = serde_json::json!({
+        "contractVersion": "1.0",
+        "operation": "exportar-docx",
+        "payload": { "datos": datos_valor },
+        "output": {
+            "ruta": ruta_salida_abs.to_string_lossy(),
+            "modo": modo_str,
+        }
+    });
+    let envelope_str = serde_json::to_string(&envelope)
+        .map_err(|e| format!("Error al serializar envelope: {}", e))?;
+
+    // --- 1) Distribución: buscar binario PyInstaller ---
+    //
+    // Se busca en este orden:
+    //   a) <dir_exe>/_scripts/exportar-docx          — junto al ejecutable (distribución real)
+    //   b) target/release/_scripts/exportar-docx     — build.sh por defecto
+    //   c) target/debug/_scripts/exportar-docx       — build.sh target/debug
+    //
+    // Esto cubre cualquier combinación de perfil de compilación (debug/release)
+    // contra el destino con el que se haya ejecutado build.sh.
+    let exe_dist = dir_exe.join("_scripts/exportar-docx");
+    #[cfg(windows)]
+    let exe_dist = dir_exe.join("_scripts/exportar-docx.exe");
+
+    if exe_dist.exists() {
+        let resultado = std::process::Command::new(&exe_dist)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+        return ejecutar_contrato(resultado, envelope_str);
     }
-    
-    if !salida.status.success() {
-        // El script imprime mensajes de error limpios en stderr; usarlos como
-        // mensaje de error de trazar en vez de mostrar el traceback nativo.
-        let msg = if !salida.stderr.is_empty() {
-            String::from_utf8_lossy(&salida.stderr).trim().to_string()
-        } else {
-            format!("La herramienta externa falló con código {}", salida.status)
-        };
-        return Err(msg);
+
+    // Fallback: buscar en target/<profile>/_scripts/ caminando hacia arriba
+    // desde el directorio del ejecutable. Esto permite que build.sh (que por
+    // defecto instala en target/release) funcione aunque el binario Rust se
+    // haya compilado en debug (y viceversa).
+    let en_target = resolver_ruta_recurso(dir_exe, "target/release/_scripts/exportar-docx")
+        .or_else(|| resolver_ruta_recurso(dir_exe, "target/debug/_scripts/exportar-docx"));
+
+    if let Some(exe_target) = en_target {
+        let resultado = std::process::Command::new(&exe_target)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+        return ejecutar_contrato(resultado, envelope_str);
     }
-    
-    Ok(())
+
+    // --- 2) Desarrollo: scripts/exportar-docx/exportar_docx.py + .venv/bin/python ---
+    let script_dev = resolver_ruta_recurso(
+        dir_exe,
+        "scripts/exportar-docx/exportar_docx.py",
+    );
+    let script_dev = match script_dev {
+        Some(p) => p,
+        None => return Err(format!(
+            "No se encontró la herramienta externa de exportación.\n\
+             En distribución:  {}/_scripts/exportar-docx (genérelo con scripts/exportar-docx/build.sh)\n\
+             En desarrollo:    scripts/exportar-docx/exportar_docx.py (desde {} hacia arriba)",
+            dir_exe.display(), dir_exe.display()
+        )),
+    };
+    let raiz_proyecto = script_dev
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent());
+    let python = raiz_proyecto
+        .map(|r| r.join(".venv/bin/python"))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from("python3"));
+
+    let resultado = std::process::Command::new(&python)
+        .arg(&script_dev)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+
+    ejecutar_contrato(resultado, envelope_str)
 }
+
+/// Ejecuta la comunicación con la herramienta externa según el contrato IPC:
+/// escribe el envelope JSON por stdin del hijo, lee stdout (JSON de resultado)
+/// y stderr (logs humanos), y mapea el código de salida a un mensaje accionable.
+fn ejecutar_contrato(
+    spawn: std::io::Result<std::process::Child>,
+    envelope: String,
+) -> Result<(), String> {
+    let mut child = spawn.map_err(|e| format!("Error al iniciar herramienta externa: {}", e))?;
+
+    // Escribir el envelope por stdin
+    use std::io::Write;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(envelope.as_bytes())
+            .map_err(|e| format!("Error al enviar datos a la herramienta: {}", e))?;
+        // drop stdin para señalizar EOF
+    }
+
+    let output = child.wait_with_output()
+        .map_err(|e| format!("Error al esperar la herramienta externa: {}", e))?;
+
+    // stderr: logs humanos ([INFO]/[WARN]/[ERR]) — mostrar solo esos al usuario
+    if !output.stderr.is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        for linea in stderr.lines() {
+            if linea.starts_with("[INFO]") || linea.starts_with("[WARN]") || linea.starts_with("[ERR]") {
+                eprintln!("{}", linea);
+            }
+        }
+    }
+
+    let codigo = output.status.code().unwrap_or(-1);
+    let stdout_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    if codigo == 0 {
+        // Éxito: parsear artefactos del JSON de stdout para confirmar
+        if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&stdout_str) {
+            if resp.get("status").and_then(|s| s.as_str()) == Some("ok") {
+                if let Some(arts) = resp.get("artefactos").and_then(|a| a.as_array()) {
+                    if let Some(primero) = arts.first() {
+                        if let Some(ruta) = primero.get("ruta").and_then(|r| r.as_str()) {
+                            println!("✓ Documento exportado: {}", ruta);
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+        if !stdout_str.is_empty() {
+            println!("{}", stdout_str);
+        }
+        return Ok(());
+    }
+    _procesar_error(codigo, stdout_str)
+}
+
+/// Mapea el código de salida semántico de la herramienta externa a un mensaje
+/// accionable para el usuario. Intenta extraer el detalle del JSON de error.
+fn _procesar_error(codigo: i32, stdout_str: String) -> Result<(), String> {
+    let msg_error = if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&stdout_str) {
+        if resp.get("status").and_then(|s| s.as_str()) == Some("error") {
+            if let Some(err) = resp.get("error") {
+                if let Some(m) = err.get("mensaje").and_then(|m| m.as_str()) {
+                    return Err(m.to_string());
+                }
+            }
+        }
+        stdout_str
+    } else {
+        String::new()
+    };
+
+    let msg = match codigo {
+        1 => format!("{}\n  La herramienta externa no soporta la versión del contrato. Actualice el binario con scripts/exportar-docx/build.sh.", msg_error),
+        2 => if msg_error.is_empty() { "Datos de entrada inválidos. Verifique que existan métricas calculadas para este curso.".to_string() } else { msg_error },
+        3 => if msg_error.is_empty() { "No se pudo crear el documento. Verifique que la ruta sea un archivo .docx válido y tenga permisos de escritura.".to_string() } else { msg_error },
+        4 => format!("{}\n  Falta una dependencia en la herramienta externa. Regénere el binario con scripts/exportar-docx/build.sh.", msg_error),
+        _ => if msg_error.is_empty() { format!("La herramienta externa falló (código {}).", codigo) } else { msg_error },
+    };
+    Err(msg)
+}
+
+
+
+
 
 /// Busca un recurso relativo caminando hacia arriba desde `inicio` (típico: el
 /// directorio del ejecutable) hasta la raíz del sistema de archivos. Devuelve
@@ -145,9 +280,6 @@ fn resolver_ruta_recurso(inicio: &Path, recurso_relativo: &str) -> Option<std::p
     }
     None
 }
-
-/// Obtiene la lista de cursos desde datos/cursos/
-
 
 /// Obtiene la lista de cursos desde datos/cursos/
 fn obtener_cursos(ruta_cursos: &Path) -> Result<Vec<String>, String> {

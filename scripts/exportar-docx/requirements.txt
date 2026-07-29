@@ -1,1 +1,2 @@
 python-docx>=1.1.0
+pyinstaller>=6.0  # solo para empaquetado (build.sh), no en runtime

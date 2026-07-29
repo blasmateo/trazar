@@ -15,8 +15,12 @@ __pycache__/
 target/debug/datos
 datos/
 
+# Salidas de exportación
+*.docx
+
 # Scripts compilados
 _scripts/
+build/
 *.exe
 *.spec
 

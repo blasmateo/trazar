@@ -145,15 +145,6 @@ enum InspectorAction {
 		/// Tipo de dataset (opcional)
         tipo: Option<String>,
     },
-    /// Consolidar archivos validados a datos/cursos/
-	#[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector consolidar")]
-    Consolidar {
-        /// ID o nombre del curso
-        #[arg(short = 'c', long = "curso")]
-        curso: String,
-        /// Tipo de dataset (opcional)
-        tipo: Option<String>,
-    },
 }
 
 #[derive(Subcommand)]
@@ -420,12 +411,6 @@ fn main() {
                 }
 				InspectorAction::Validar { tipo } => {
 					match inspector::validar(&ruta_base, tipo.as_deref()) {
-						Ok(_) => {},
-						Err(e) => eprintln!("✗ Error: {}", e),
-					}
-				}
-				InspectorAction::Consolidar { curso, tipo } => {
-					match inspector::consolidar(&ruta_base, &curso, tipo.as_deref()) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}

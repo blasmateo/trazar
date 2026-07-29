@@ -15,12 +15,12 @@ src/
 │   ├── init.rs          # Crear estructura base
 │   ├── verificar.rs     # Verificar integridad
 │   ├── purgar.rs        # Eliminar datos de usuario
-│   ├── validar.rs       # Validar archivos importados
-│   └── consolidar.rs    # Consolidar datos a cursos
+│   └── validar.rs       # Validar archivos importados
 ├── curso/               # Gestión de cursos
 │   ├── nuevo.rs         # Crear curso
 │   ├── mostrar.rs       # Ver cursos
 │   ├── editar.rs        # Editar curso
+│   ├── preguntas.rs    # Funciones interactivas (texto, número, costo, fechas, curso, asignatura)
 │   └── remover.rs       # Eliminar cursos
 ├── cursante/            # Gestión de cursantes
 │   ├── nuevo.rs         # Agregar cursante
@@ -29,7 +29,7 @@ src/
 │   └── remover.rs       # Eliminar cursantes
 ├── archivo/             # Gestión de archivos de datos
 │   ├── importar.rs      # Importar archivos crudos
-│   ├── exportar.rs      # Exportar datos consolidados
+│   ├── exportar.rs      # Exportar datos a .docx (vía herramienta externa Python)
 │   ├── mostrar.rs       # Listar archivos
 │   └── remover.rs       # Remover archivos
 └── metricas/            # Generación de métricas
@@ -63,10 +63,13 @@ datos/
 │       │   ├── asistencias.json
 │       │   └── quizzes.json
 │       ├── asignaciones.json
-│       └── pagos/
-│           ├── comprobantes/
-│           │   └── cursante-<ID>-<YYYYMMDD>-<YYYYMMDD>-sec<NNN>.png
-│           └── pagos.json
+│       ├── pagos/
+│       │   ├── comprobantes/
+│       │   │   └── cursante-<ID>-<YYYYMMDD>-<YYYYMMDD>-sec<NNN>.png
+│       │   └── pagos.json
+│       ├── metricas/
+│       │   ├── asistencias-resumen.json
+│       │   └── asistencias-tabla.json
 │
 ├── entrada/
 └── salida/
@@ -83,7 +86,6 @@ trazar inspector init                    # Crear estructura base
 trazar inspector verificar               # Verificar integridad
 trazar inspector purgar                  # Purgar datos (requiere confirmación)
 trazar inspector validar [TIPO]          # Validar archivos importados
-trazar inspector consolidar -c <ID> [TIPO]  # Consolidar a cursos
 
 # Curso
 trazar curso nuevo                       # Crear curso (interactivo)
@@ -99,7 +101,7 @@ trazar cursante [-c <ID>] remover [-i <ID>...] # Eliminar cursantes
 
 # Archivo
 trazar archivo importar -t <TIPO> -r <RUTA>... [-s]  # Importar (modo interactivo si hay errores)
-trazar archivo exportar <TIPO>                        # Exportar datos
+trazar archivo exportar -t <TIPO> -m [lista|tabla] -r <RUTA>  # Exportar datos a .docx
 trazar archivo mostrar [TIPO]                         # Listar archivos
 trazar archivo remover [ARCHIVO...]                    # Remover archivo (modo interactivo si no se especifica)
 
@@ -118,19 +120,21 @@ trazar completions <SHELL> [RUTA]        # Generar autocompletado
 
 ### Flujo de Importación de Datos
 
-1. **Importar**: `trazar archivo importar -t asistencias -r archivo.txt`
-    - Valida formato estricto del archivo (requiere `x - Nombre` o `s - Nombre`)
+1. **Importar**: `trazar archivo importar -t asistencias -r archivo.txt [archivo2.txt ...]`
+    - Valida formato estricto del archivo (requiere `x/s - Nombre`)
+    - Clasifica errores en **formato** (contenido inválido) vs **metadata** (archivo no encontrado)
     - Detecta automáticamente curso y asignatura por cabeceras
-    - Coincidencia exacta del nombre del curso (kebab-case)
-    - Si hay errores de formato, pregunta si importar solo los válidos
-    - Copia archivo directamente a `datos/cursos/<id-curso>/archivo/asistencias/`
+    - Coincidencia exacta del nombre del curso (kebab-case); asignaturas con coincidencia parcial
+    - Acepta archivos individuales, directorios, y globs expandidos por el shell
+    - Si hay errores de formato, pregunta si importar solo los válidos (o usa `-s` para auto-afirmar)
+    - Copia archivo a `datos/cursos/<id-curso>/archivo/asistencias/[<id-asignatura>-<nombre>/]clase-<NNN>.txt`
     - Maneja BOM invisible en archivos UTF-8
-    - Use `-s` para auto-afirmar (importar válidos sin preguntar)
+    - Asigna automáticamente IDs a nuevas asignaturas
 
-2. **Validar**: `trazar inspector validar asistencias`
-    - Valida formato semántico de archivos importados
-    - Verifica cabeceras obligatorias
-    - Detecta errores de formato
+2. **Validar**: `trazar inspector validar [asistencias]`
+    - Valida formato semántico de archivos importados en todos los cursos
+    - Verifica cabecera obligatoria `# log: asistencias`
+    - Recorre recursivamente subdirectorios de asignaturas
 
 ### Formato de Archivos de Asistencias
 
@@ -180,23 +184,17 @@ Los IDs de cursantes son **inmutables**. Una vez asignados, nunca cambian. Esto 
 
 ### Módulos Planeados
 
-1. **Métricas** (`trazar metricas`)
-   - Generar reportes de desempeño
-   - Estadísticas de asistencia
-   - Análisis de calificaciones
-   - Reportes financieros
-
-2. **Exportación Avanzada**
+1. **Exportación Avanzada**
    - Exportar a PDF
    - Exportar a Excel/CSV
    - Formatos personalizados
 
-3. **Validación Mejorada**
+2. **Validación Mejorada**
    - Validación cruzada entre datasets
    - Detección de inconsistencias
    - Sugerencias de corrección
 
-4. **Integración con Fuentes Externas**
+3. **Integración con Fuentes Externas**
    - Importar desde Google Forms (quizzes)
    - Importar desde sistemas de pago
    - Sincronización con calendarios
@@ -205,10 +203,73 @@ Los IDs de cursantes son **inmutables**. Una vez asignados, nunca cambian. Esto 
 
 - **Rust** (lenguaje)
 - **clap** (parsing de CLI)
-- **serde_json** (manejo de JSON)
-- **rustyline** (editor interactivo)
-- **regex** (validación de formatos)
 - **clap_complete** (generación de autocompletado)
+- **serde_json** (manejo de JSON)
+- **chrono** (fechas y tiempos)
+- **unicode-normalization** (normalización Unicode para nombres)
+- **rustyline** (editor interactivo en terminal)
+- **regex** (validación de formatos)
+
+### Herramientas externas (Python)
+
+- **python-docx** (generación de documentos .docx)
+- **PyInstaller** (empaquetado de scripts Python en binarios autocontenidos)
+
+## Integración con Herramientas Externas (Python)
+
+Trazar extiende capacidades (exportación a .docx, futuros gráficos/PDF) mediante
+**herramientas externas escritas en Python**, cada una en su propia subcarpeta de
+`scripts/`. La integración sigue un **contrato IPC** UNIX: el binario Rust
+(`trazar`) invoca al script como subproceso, comunicándose por canales estándar.
+
+### Convención de rutas
+
+```
+<dir-ejecutable>/trazar                 # binario Rust
+<dir-ejecutable>/_scripts/
+    └── exportar-docx                   # binario PyInstaller (autocontenido)
+```
+
+- **Distribución**: el binario PyInstaller (en `_scripts/`) empaqueta el
+  intérprete Python y sus dependencias. **No requiere Python instalado** en la
+  máquina del usuario.
+- **Desarrollo** (fallback): si no existe `_scripts/<nombre>`, Trazar busca
+  `scripts/<nombre>/<nombre>.py` y lo ejecuta con `.venv/bin/python`.
+
+### Contrato de comunicación
+
+| Canal | Dirección | Contenido | Formato |
+|---|---|---|---|
+| stdin | Rust → Python | Datos de entrada | JSON (envelope estructurado) |
+| stdout | Python → Rust | Resultado/metadata | JSON estructurado |
+| stderr | Python → Rust | Logs humanos | Texto con prefijos `[INFO]`/`[WARN]`/`[ERR]` |
+| Archivos | Python → FS | Artefactos binarios (.docx) | Directos al disco |
+| Código de salida | Python → Rust | Semántica del resultado | `0` ok, `1` contrato, `2` entrada, `3` recursos, `4` dependencia |
+
+Envelope de entrada (stdin):
+
+```json
+{
+  "contractVersion": "1.0",
+  "operation": "exportar-docx",
+  "payload": { "datos": { ...métricas... } },
+  "output": { "ruta": "/abs/path.docx", "modo": "lista|tabla" }
+}
+```
+
+Respuesta (stdout):
+
+```json
+{ "status": "ok", "artefactos": [{ "ruta": "...", "tipo": "docx", "tamanoBytes": 12345 }] }
+```
+
+### Empaquetado
+
+Cada herramienta externa incluye un `build.sh` que genera el binario PyInstaller:
+
+```bash
+scripts/exportar-docx/build.sh [destino]   # por defecto target/release
+```
 
 ## Notas de Implementación
 
