@@ -296,15 +296,21 @@ NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
         si: bool,
     },
     
-    /// Exportar datos consolidados
+    /// Exportar datos consolidados a .docx
     #[command(
         help_template = HELP_SUBCMD,
-        override_usage = "trazar archivo exportar <TIPO>"
+        override_usage = "trazar archivo exportar -t <TIPO> -m [lista|tabla] -r <RUTA>"
     )]
     Exportar {
         /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
-        #[arg(value_name = "TIPO")]
-        tipo: String,
+        #[arg(short = 't', long = "tipo", value_name = "TIPO")]
+        tipo: TipoDatasetCli,
+        /// Modo de exportación: lista (resumen) o tabla (detallado)
+        #[arg(short = 'm', long = "modo", value_name = "MODO", default_value = "lista")]
+        modo: ModoMetricas,
+        /// Ruta de salida del archivo .docx
+        #[arg(short = 'r', long = "ruta", value_name = "RUTA")]
+        ruta: String,
     },
     
     /// Listar archivos en datos/archivo/
@@ -506,8 +512,10 @@ fn main() {
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
 				}
-				ArchivoAction::Exportar { tipo } => {
-					match archivo::exportar(&ruta_base, &tipo) {
+				ArchivoAction::Exportar { tipo, modo, ruta } => {
+					let tipo_str = tipo.to_string();
+					let modo_str = modo.to_string();
+					match archivo::exportar(&ruta_base, &tipo_str, &modo_str, &ruta) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
