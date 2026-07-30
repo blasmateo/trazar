@@ -12,7 +12,7 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: Option<&str>) -> Result<(), String> 
     let ruta_cursos = ruta_base.join("datos/cursos");
     
     if !ruta_cursos.exists() {
-        return Err("No existe el directorio datos/cursos/. Ejecute 'trazar inspector init' primero.".to_string());
+        return Err("No existe el directorio datos/cursos/. Ejecute 'trazar archivo init' primero.".to_string());
     }
     
     println!("╔══════════════════════════════════════════════════╗");

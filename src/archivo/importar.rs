@@ -16,7 +16,7 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], bloque: b
     
     let ruta_cursos = ruta_base.join("datos/cursos");
     if !ruta_cursos.exists() {
-        return Err(format!("No existe el directorio {}. Ejecute 'trazar inspector init' primero.", ruta_cursos.display()));
+        return Err(format!("No existe el directorio {}. Ejecute 'trazar archivo init' primero.", ruta_cursos.display()));
     }
     
     let archivos_expandidos = expandir_argumentos(archivos)?;

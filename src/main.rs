@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand, CommandFactory, ValueEnum};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
 
-mod inspector;
 mod curso;
 mod cursante;
 mod archivo;
@@ -62,16 +61,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Gestión de estructura de datos
-    #[command(
-        help_template = HELP_CMD,
-        override_usage = "trazar inspector <COMANDO>"
-    )]
-    Inspector {
-        #[command(subcommand)]
-        action: InspectorAction,
-    },
-    
     /// Gestión de cursos
     #[command(
         help_template = HELP_CMD,
@@ -95,14 +84,39 @@ enum Commands {
         action: CursanteAction,
     },
 
-	/// Gestión de archivos de datos
+	/// Gestión de archivos de datos e inspección de estructura
 	#[command(
 		help_template = HELP_CMD,
-		override_usage = "trazar archivo <COMANDO>"
+		override_usage = "trazar archivo [OPCIONES] [COMANDO]",
+		long_about = "Gestión de archivos de datos e inspección de estructura.
+
+INSPECCIÓN (-i, --inspeccionar):
+  -i validar [-t TIPO]  Valida el formato semántico de archivos importados
+  -i verificar          Verifica la integridad de la estructura de directorios
+
+SUBCOMANDOS:
+  init                  Crear estructura base
+  purgar                Purgar datos de usuario (requiere confirmación)
+  importar              Importar archivos crudos
+  exportar              Exportar datos a .docx
+  mostrar               Listar archivos
+  remover               Remover archivos
+
+EJEMPLOS:
+  trazar archivo -i verificar
+  trazar archivo -i validar -t asistencias
+  trazar archivo init
+  trazar archivo importar -t asistencias -r archivo.txt"
 	)]
 	Archivo {
+		/// Inspeccionar estructura o archivos: validar o verificar
+		#[arg(short = 'i', long = "inspeccionar", value_name = "ACCION")]
+		inspeccionar: Option<AccionInspeccion>,
+		/// Tipo de dataset para 'validar' (opcional, por defecto asistencias)
+		#[arg(short = 't', long = "tipo", value_name = "TIPO", requires = "inspeccionar")]
+		tipo: Option<TipoDatasetCli>,
 		#[command(subcommand)]
-		action: ArchivoAction,
+		action: Option<ArchivoAction>,
 	},
 	
 	/// Generar métricas y reportes
@@ -125,25 +139,6 @@ enum Commands {
         shell: Shell,
         /// Ruta donde guardar el script
         ruta: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-enum InspectorAction {
-    /// Iniciar directorios base
-    #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector init")]
-    Init,
-    /// Verificar integridad de directorios
-    #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector verificar")]
-    Verificar,
-    /// Purgar toda la base de datos de usuario
-    #[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector purgar")]
-    Purgar,
-    /// Validar archivos en datos/archivo/
-	#[command(help_template = HELP_SUBCMD, override_usage = "trazar inspector validar")]
-	Validar {
-		/// Tipo de dataset (opcional)
-        tipo: Option<String>,
     },
 }
 
@@ -205,6 +200,12 @@ enum CursanteAction {
 
 #[derive(Subcommand)]
 enum ArchivoAction {
+    /// Iniciar directorios base
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar archivo init")]
+    Init,
+    /// Purgar toda la base de datos de usuario
+    #[command(help_template = HELP_SUBCMD, override_usage = "trazar archivo purgar")]
+    Purgar,
     /// Importar archivo crudo a datos/cursos/<id-curso>/archivo/
     #[command(
         help_template = HELP_SUBCMD,
@@ -327,6 +328,24 @@ NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
     },
 }
 
+/// Acciones de inspección para `trazar archivo inspeccionar`
+#[derive(ValueEnum, Clone, Debug)]
+enum AccionInspeccion {
+    /// Validar el formato semántico de los archivos importados
+    Validar,
+    /// Verificar la integridad de la estructura de directorios base
+    Verificar,
+}
+
+impl std::fmt::Display for AccionInspeccion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AccionInspeccion::Validar => write!(f, "validar"),
+            AccionInspeccion::Verificar => write!(f, "verificar"),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum MetricasAction {
     /// Mostrar métricas guardadas (lee JSON)
@@ -380,44 +399,6 @@ fn main() {
     let ruta_base = obtener_ruta_base();
     
     match cli.command {
-        Commands::Inspector { action } => {
-            match action {
-                InspectorAction::Init => {
-                    match inspector::init(&ruta_base) {
-                        Ok(_) => println!("✓ Estructura base creada/verificada"),
-                        Err(e) => eprintln!("✗ Error: {}", e),
-                    }
-                }
-                InspectorAction::Verificar => {
-                    match inspector::verificar(&ruta_base) {
-                        Ok(faltantes) => {
-                            if faltantes.is_empty() {
-                                println!("✓ Integridad OK: todos los directorios existen");
-                            } else {
-                                println!("⚠ Faltan directorios:");
-                                for dir in faltantes {
-                                    println!("  - {}", dir);
-                                }
-                            }
-                        }
-                        Err(e) => eprintln!("✗ Error: {}", e),
-                    }
-                }
-                InspectorAction::Purgar => {
-                    match inspector::purgar(&ruta_base) {
-                        Ok(_) => {},
-                        Err(e) => eprintln!("✗ Error: {}", e),
-                    }
-                }
-				InspectorAction::Validar { tipo } => {
-					match inspector::validar(&ruta_base, tipo.as_deref()) {
-						Ok(_) => {},
-						Err(e) => eprintln!("✗ Error: {}", e),
-					}
-				}
-            }
-        }
-        
         Commands::Curso { action } => {
             match action {
                 CursoAction::Nuevo => {
@@ -488,16 +469,57 @@ fn main() {
             }
         }
 		
-		Commands::Archivo { action } => {
+		Commands::Archivo { inspeccionar, tipo, action } => {
+			// Flag -i/--inspeccionar tiene prioridad sobre los subcomandos
+			if let Some(accion) = inspeccionar {
+				match accion {
+					AccionInspeccion::Verificar => {
+						match archivo::verificar(&ruta_base) {
+							Ok(faltantes) => {
+								if faltantes.is_empty() {
+									println!("✓ Integridad OK: todos los directorios existen");
+								} else {
+									println!("⚠ Faltan directorios:");
+									for dir in faltantes {
+										println!("  - {}", dir);
+									}
+								}
+							}
+							Err(e) => eprintln!("✗ Error: {}", e),
+						}
+					}
+					AccionInspeccion::Validar => {
+						let tipo_str = tipo.as_ref().map(|t| t.to_string());
+						match archivo::validar(&ruta_base, tipo_str.as_deref()) {
+							Ok(_) => {},
+							Err(e) => eprintln!("✗ Error: {}", e),
+						}
+					}
+				}
+				return;
+			}
+			// Sin flag: delegar a subcomandos
 			match action {
-					ArchivoAction::Importar { tipo, archivos, si } => {
-						let tipo_str = tipo.to_string();
-						match archivo::importar(&ruta_base, &tipo_str, &archivos, si) {
+				Some(ArchivoAction::Init) => {
+					match archivo::init(&ruta_base) {
+						Ok(_) => println!("✓ Estructura base creada/verificada"),
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				Some(ArchivoAction::Purgar) => {
+					match archivo::purgar(&ruta_base) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
 				}
-				ArchivoAction::Exportar { tipo, modo, ruta } => {
+				Some(ArchivoAction::Importar { tipo, archivos, si }) => {
+					let tipo_str = tipo.to_string();
+					match archivo::importar(&ruta_base, &tipo_str, &archivos, si) {
+						Ok(_) => {},
+						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				Some(ArchivoAction::Exportar { tipo, modo, ruta }) => {
 					let tipo_str = tipo.to_string();
 					let modo_str = modo.to_string();
 					match archivo::exportar(&ruta_base, &tipo_str, &modo_str, &ruta) {
@@ -505,13 +527,13 @@ fn main() {
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
 				}
-				ArchivoAction::Mostrar { tipo } => {
+				Some(ArchivoAction::Mostrar { tipo }) => {
 					match archivo::mostrar(&ruta_base, tipo.as_deref()) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
 				}
-				ArchivoAction::Remover { archivos } => {
+				Some(ArchivoAction::Remover { archivos }) => {
 					let rutas = if archivos.is_empty() {
 						None
 					} else {
@@ -520,6 +542,13 @@ fn main() {
 					match archivo::remover(&ruta_base, rutas) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
+					}
+				}
+				None => {
+					// Sin flag ni subcomando: imprimir ayuda
+					let mut cmd = Cli::command();
+					if let Some(sub) = cmd.find_subcommand_mut("archivo") {
+						let _ = sub.print_help();
 					}
 				}
 			}
@@ -559,7 +588,7 @@ fn main() {
                     eprintln!("3. Reiniciar fish:");
                     eprintln!("   exec fish\n");
                     eprintln!("4. Probar:");
-                    eprintln!("   trazar inspector <TAB>\n");
+                    eprintln!("   trazar archivo <TAB>\n");
                 }
                 Shell::Bash => {
                     eprintln!("1. Crear el directorio si no existe:");
@@ -569,7 +598,7 @@ fn main() {
                     eprintln!("3. Activar:");
                     eprintln!("   source ~/.bash_completion.d/trazar\n");
                     eprintln!("4. Probar:");
-                    eprintln!("   trazar inspector <TAB>\n");
+                    eprintln!("   trazar archivo <TAB>\n");
                 }
                 Shell::Zsh => {
                     eprintln!("1. Crear el directorio si no existe:");
@@ -582,14 +611,14 @@ fn main() {
                     eprintln!("4. Reiniciar zsh:");
                     eprintln!("   exec zsh\n");
                     eprintln!("5. Probar:");
-                    eprintln!("   trazar inspector <TAB>\n");
+                    eprintln!("   trazar archivo <TAB>\n");
                 }
                 Shell::PowerShell => {
                     eprintln!("1. Ejecutar este comando:");
                     eprintln!("   trazar completions powershell $PROFILE\n");
                     eprintln!("2. Reiniciar PowerShell\n");
                     eprintln!("3. Probar:");
-                    eprintln!("   trazar inspector <TAB>\n");
+                    eprintln!("   trazar archivo <TAB>\n");
                 }
                 _ => {
                     eprintln!("Shell soportado: {}", shell);

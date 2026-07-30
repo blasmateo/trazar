@@ -9,7 +9,7 @@ pub fn ejecutar(ruta_base: &Path, curso_arg: Option<&str>) -> Result<(), String>
     let ruta_cursos = ruta_base.join("datos/cursos");
     
     if !ruta_cursos.exists() {
-        return Err("No existe el directorio de cursos. Ejecute 'trazar inspector init' primero".to_string());
+        return Err("No existe el directorio de cursos. Ejecute 'trazar archivo init' primero".to_string());
     }
     
     let mut cursos: Vec<(u32, String)> = Vec::new();

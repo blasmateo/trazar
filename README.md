@@ -11,11 +11,15 @@
 ```
 src/
 ├── main.rs              # CLI principal con subcomandos POSIX
-├── inspector/           # Gestión de estructura de datos
+├── archivo/             # Gestión de archivos de datos e inspección de estructura
 │   ├── init.rs          # Crear estructura base
-│   ├── verificar.rs     # Verificar integridad
 │   ├── purgar.rs        # Eliminar datos de usuario
-│   └── validar.rs       # Validar archivos importados
+│   ├── verificar.rs     # Verificar integridad de directorios
+│   ├── validar.rs       # Validar archivos importados
+│   ├── importar.rs      # Importar archivos crudos
+│   ├── exportar.rs      # Exportar datos a .docx (vía herramienta externa Python)
+│   ├── mostrar.rs       # Listar archivos
+│   └── remover.rs       # Remover archivos
 ├── curso/               # Gestión de cursos
 │   ├── nuevo.rs         # Crear curso
 │   ├── mostrar.rs       # Ver cursos
@@ -27,11 +31,6 @@ src/
 │   ├── mostrar.rs       # Ver cursantes
 │   ├── editar.rs        # Editar cursante
 │   └── remover.rs       # Eliminar cursantes
-├── archivo/             # Gestión de archivos de datos
-│   ├── importar.rs      # Importar archivos crudos
-│   ├── exportar.rs      # Exportar datos a .docx (vía herramienta externa Python)
-│   ├── mostrar.rs       # Listar archivos
-│   └── remover.rs       # Remover archivos
 └── metricas/            # Generación de métricas
     └── calcular.rs      # Calcular estadísticas
 ```
@@ -81,12 +80,6 @@ datos/
 ### Comandos Principales
 
 ```bash
-# Inspector
-trazar inspector init                    # Crear estructura base
-trazar inspector verificar               # Verificar integridad
-trazar inspector purgar                  # Purgar datos (requiere confirmación)
-trazar inspector validar [TIPO]          # Validar archivos importados
-
 # Curso
 trazar curso nuevo                       # Crear curso (interactivo)
 trazar curso mostrar [-i <ID>]           # Ver cursos
@@ -99,10 +92,14 @@ trazar cursante [-c <ID>] mostrar [-i <ID>]  # Ver cursantes
 trazar cursante [-c <ID>] editar [-i <ID>]   # Editar cursante
 trazar cursante [-c <ID>] remover [-i <ID>...] # Eliminar cursantes
 
-# Archivo
-trazar archivo importar -t <TIPO> -r <RUTA>... [-s]  # Importar (modo interactivo si hay errores)
+# Archivo (gestión de datos e inspección de estructura)
+trazar archivo init                                    # Crear estructura base
+trazar archivo purgar                                  # Purgar datos (requiere confirmación: 'Si')
+trazar archivo -i verificar                            # Verificar integridad de directorios
+trazar archivo -i validar [-t <TIPO>]                  # Validar archivos importados
+trazar archivo importar -t <TIPO> -r <RUTA>... [-s]    # Importar (modo interactivo si hay errores)
 trazar archivo exportar -t <TIPO> -m [lista|tabla] -r <RUTA>  # Exportar datos a .docx
-trazar archivo mostrar [TIPO]                         # Listar archivos
+trazar archivo mostrar [TIPO]                          # Listar archivos
 trazar archivo remover [ARCHIVO...]                    # Remover archivo (modo interactivo si no se especifica)
 
 # Métricas
@@ -131,7 +128,7 @@ trazar completions <SHELL> [RUTA]        # Generar autocompletado
     - Maneja BOM invisible en archivos UTF-8
     - Asigna automáticamente IDs a nuevas asignaturas
 
-2. **Validar**: `trazar inspector validar [asistencias]`
+2. **Validar**: `trazar archivo -i validar [-t asistencias]`
     - Valida formato semántico de archivos importados en todos los cursos
     - Verifica cabecera obligatoria `# log: asistencias`
     - Recorre recursivamente subdirectorios de asignaturas

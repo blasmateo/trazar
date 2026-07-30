@@ -1,15 +1,24 @@
 // MÓDULO ARCHIVO
 // Gestión de archivos de datos (importar, exportar, mostrar, remover)
+// e inspección de estructura (init, purgar, verificar, validar)
 
+mod init;
 mod importar;
 mod exportar;
 mod mostrar;
 mod remover;
+mod purgar;
+mod verificar;
+mod validar;
 
+pub use init::ejecutar as init;
 pub use importar::ejecutar as importar;
 pub use exportar::ejecutar as exportar;
 pub use mostrar::ejecutar as mostrar;
 pub use remover::ejecutar as remover;
+pub use purgar::ejecutar as purgar;
+pub use verificar::ejecutar as verificar;
+pub use validar::ejecutar as validar;
 
 /// Tipos de dataset soportados
 pub enum TipoDataset {
