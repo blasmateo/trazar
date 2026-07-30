@@ -139,7 +139,7 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
         
         if input.is_empty() {
             println!("\nSe guardarán los cambios en {}.", nombre_curso);
-            let confirmacion = match rl.readline("¿Confirmar? (s/N): ") {
+            let confirmacion = match rl.readline("Para confirmar, ingrese 'Si': ") {
                 Ok(line) => line,
                 Err(_) => {
                     println!("\nOperación cancelada. No se guardaron cambios.");
@@ -147,8 +147,8 @@ pub fn ejecutar(ruta_base: &Path, argumento: Option<&str>) -> Result<(), String>
                 }
             };
             
-            let conf = confirmacion.trim().to_lowercase();
-            if conf == "s" || conf.is_empty() {
+            let conf = confirmacion.trim();
+            if conf == "Si" {
                 // Extraer nuevo nombre ANTES de serializar
                 let nuevo_nombre_opt = datos.get("nombre")
                     .and_then(|v| v.as_str())

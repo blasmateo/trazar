@@ -191,7 +191,7 @@ pub fn ejecutar(ruta_base: &Path, curso_arg: Option<&str>, cursante_arg: Option<
         
         if input.is_empty() {
             println!("\nSe guardarán los cambios en {}.", nombre_cursante);
-            let confirmacion = match rl.readline("¿Confirmar? (s/N): ") {
+            let confirmacion = match rl.readline("Para confirmar, ingrese 'Si': ") {
                 Ok(line) => line,
                 Err(_) => {
                     println!("\nOperación cancelada. No se guardaron cambios.");
@@ -199,8 +199,8 @@ pub fn ejecutar(ruta_base: &Path, curso_arg: Option<&str>, cursante_arg: Option<
                 }
             };
             
-            let conf = confirmacion.trim().to_lowercase();
-            if conf == "s" || conf.is_empty() {
+            let conf = confirmacion.trim();
+            if conf == "Si" {
                 let nuevo_nombre_opt = datos.get("nombre")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
@@ -296,17 +296,38 @@ pub fn ejecutar(ruta_base: &Path, curso_arg: Option<&str>, cursante_arg: Option<
 }
 
 fn encontrar_cursante(cursantes: &[(u32, String)], argumento: &str) -> Result<String, String> {
+    // Buscar por ID numérico
     if let Ok(id) = argumento.parse::<u32>() {
         if let Some((_, nombre)) = cursantes.iter().find(|(cursante_id, _)| *cursante_id == id) {
             return Ok(nombre.clone());
         }
     }
     
+    // Buscar por nombre exacto de carpeta
     if let Some((_, nombre)) = cursantes.iter().find(|(_, n)| n == argumento) {
         return Ok(nombre.clone());
     }
     
-    Err(format!("No se encontró cursante con el identificador '{}'", argumento))
+    // Buscar por nombre simple (ej: "maria-lopez" → "002-maria-lopez")
+    let argumento_lower = argumento.to_lowercase();
+    if let Some((_, nombre)) = cursantes.iter().find(|(_, n)| {
+        n.to_lowercase().contains(&argumento_lower)
+    }) {
+        return Ok(nombre.clone());
+    }
+    
+    // No encontrado: listar sugerencias
+    let sugerencias: Vec<&str> = cursantes.iter()
+        .map(|(_, n)| {
+            n.splitn(2, '-').nth(1).unwrap_or(n)
+        })
+        .collect();
+    
+    Err(format!(
+        "No se encontró cursante con el identificador '{}'.\n  Cursantes disponibles: {}",
+        argumento,
+        sugerencias.join(", ")
+    ))
 }
 
 fn preguntar_nombre_cursante_con_valor_actual(

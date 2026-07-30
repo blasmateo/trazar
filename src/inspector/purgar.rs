@@ -9,9 +9,9 @@ pub fn ejecutar(ruta_base: &Path) -> Result<(), String> {
     let mut rl = DefaultEditor::new()
         .map_err(|e| format!("Error al inicializar editor: {}", e))?;
     
-    match rl.readline("¿Confirma purgar todos los datos? (purgar-todo/N): ") {
+    match rl.readline("¿Confirma purgar todos los datos? (Si/N): ") {
         Ok(confirmacion) => {
-            if confirmacion.trim() != "purgar-todo" {
+            if confirmacion.trim() != "Si" {
                 println!("Operación cancelada. No se purgó nada.");
                 return Ok(());
             }

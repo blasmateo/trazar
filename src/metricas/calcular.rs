@@ -558,7 +558,7 @@ fn mostrar_tabla(resultado: &ResultadoAsistencias) {
         salida.push_str(&format!("│ Cursante: {}\n", metricas.nombre));
         salida.push_str(&format!("│ Total: {}, Si: {}, No: {}\n", metricas.asistencias.len(), presente, ausente));
         salida.push_str(&format!("├{}┤\n", "─".repeat(ancho_interior)));
-        salida.push_str(&format!("│ Asignatura{}Clase{}Asiste\n", " ".repeat(18), " ".repeat(6)));
+        salida.push_str(&format!("│ {:<28}│{:>10}│{:>8}│\n", "Asignatura", "Clase", "Asiste"));
         for asistencia in &todas_ordenadas {
             let estado = if asistencia.presente { "si" } else { "no" };
             let asig_mostrar = if asistencia.asignatura.is_empty() {
@@ -788,7 +788,7 @@ fn mostrar_json_tabla(datos: &serde_json::Value, nombre_curso: &str) -> Result<(
                 salida.push_str(&format!("│ Cursante: {}\n", nombre));
                 salida.push_str(&format!("│ Total: {}, Si: {}, No: {}\n", presente + ausente, presente, ausente));
                 salida.push_str(&format!("├{}┤\n", "─".repeat(ancho_interior)));
-                salida.push_str(&format!("│ Asignatura{}Clase{}Asiste\n", " ".repeat(18), " ".repeat(6)));
+                salida.push_str(&format!("│ {:<28}│{:>10}│{:>8}│\n", "Asignatura", "Clase", "Asiste"));
                 
                 // Mostrar detalle si existe
                 if let Some(detalle) = info.get("detalle").and_then(|v| v.as_array()) {

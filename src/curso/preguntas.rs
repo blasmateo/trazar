@@ -387,17 +387,39 @@ pub fn a_kebab_case(texto: &str) -> String {
 
 /// Busca un curso por ID o nombre completo en la lista.
 pub fn encontrar_curso(cursos: &[(u32, String)], argumento: &str) -> Result<String, String> {
+    // Buscar por ID numérico
     if let Ok(id) = argumento.parse::<u32>() {
         if let Some((_, nombre)) = cursos.iter().find(|(curso_id, _)| *curso_id == id) {
             return Ok(nombre.clone());
         }
     }
     
+    // Buscar por nombre exacto de carpeta (ej: "001-matematicas")
     if let Some((_, nombre)) = cursos.iter().find(|(_, n)| n == argumento) {
         return Ok(nombre.clone());
     }
     
-    Err(format!("No se encontró ningún curso con el identificador '{}'", argumento))
+    // Buscar por nombre simple (ej: "matematicas" → "001-matematicas")
+    let argumento_lower = argumento.to_lowercase();
+    if let Some((_, nombre)) = cursos.iter().find(|(_, n)| {
+        n.to_lowercase().contains(&argumento_lower)
+    }) {
+        return Ok(nombre.clone());
+    }
+    
+    // No encontrado: listar sugerencias
+    let sugerencias: Vec<&str> = cursos.iter()
+        .map(|(_, n)| {
+            // Extraer nombre simple después del ID
+            n.splitn(2, '-').nth(1).unwrap_or(n)
+        })
+        .collect();
+    
+    Err(format!(
+        "No se encontró ningún curso con el identificador '{}'.\n  Cursos disponibles: {}",
+        argumento,
+        sugerencias.join(", ")
+    ))
 }
 
 /// Interpreta un valor según sus metadatos (enum, moneda, etc).

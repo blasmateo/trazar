@@ -40,9 +40,9 @@ pub fn ejecutar(ruta_base: &Path, nombres: Option<&[String]>) -> Result<(), Stri
     }
     
     // Confirmación
-    match rl.readline("\nPara confirmar, ingrese 'remover-curso': ") {
+    match rl.readline("\nPara confirmar, ingrese 'Si': ") {
         Ok(confirmacion) => {
-            if confirmacion.trim() != "remover-curso" {
+            if confirmacion.trim() != "Si" {
                 println!("Operación cancelada. No se removió nada.");
                 return Ok(());
             }
@@ -155,6 +155,9 @@ fn buscar_curso(ruta_cursos: &Path, nombre: &str) -> Result<Option<PathBuf>, Str
     let entradas = fs::read_dir(ruta_cursos)
         .map_err(|e| format!("Error al leer directorio: {}", e))?;
     
+    let nombre_lower = nombre.to_lowercase();
+    let mut candidato_parcial: Option<PathBuf> = None;
+    
     for entrada in entradas {
         let entrada = entrada.map_err(|e| format!("Error al leer entrada: {}", e))?;
         let ruta = entrada.path();
@@ -163,16 +166,30 @@ fn buscar_curso(ruta_cursos: &Path, nombre: &str) -> Result<Option<PathBuf>, Str
             let nombre_dir = entrada.file_name();
             let nombre_str = nombre_dir.to_string_lossy();
             
+            // Coincidencia exacta
             if nombre_str == nombre {
                 return Ok(Some(ruta));
             }
             
+            // Coincidencia por ID numérico
             if let Some(id_str) = nombre_str.split('-').next() {
                 if id_str == nombre {
                     return Ok(Some(ruta));
                 }
             }
+            
+            // Coincidencia por nombre simple (después del ID)
+            if let Some(simple) = nombre_str.splitn(2, '-').nth(1) {
+                if simple == nombre_lower {
+                    candidato_parcial = Some(ruta);
+                }
+            }
         }
+    }
+    
+    // Si no encontramos coincidencia exacta pero sí parcial, devolver el parcial
+    if let Some(ruta) = candidato_parcial {
+        return Ok(Some(ruta));
     }
     
     Ok(None)

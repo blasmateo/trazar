@@ -93,10 +93,11 @@ fn resolver_archivos(ruta_base: &Path, rutas: &[String]) -> Result<Vec<PathBuf>,
     }
     
     if !archivos_no_encontrados.is_empty() {
-        println!("Archivos no encontrados:");
+        println!("Archivos no encontrados (se buscarán en datos/cursos/*/archivo/):");
         for nombre in &archivos_no_encontrados {
             println!("  - {}", nombre);
         }
+        println!("  Nota: si desea remover un curso completo, use 'trazar curso remover'.");
     }
     
     Ok(archivos_existentes)
