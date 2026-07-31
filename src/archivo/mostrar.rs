@@ -3,10 +3,9 @@ use std::path::Path;
 
 /// Lista archivos en datos/cursos/*/archivo/
 pub fn ejecutar(ruta_base: &Path, tipo_str: Option<&str>) -> Result<(), String> {
-    if let Some(tipo) = tipo_str {
-        if tipo != "asistencias" {
-            return Err(format!("Mostrar de '{}' aún no implementado. Solo 'asistencias' está disponible.", tipo));
-        }
+    let tipo = tipo_str.ok_or("Debe especificar el tipo de dataset (ej: asistencias).")?;
+    if tipo != "asistencias" {
+        return Err(format!("Mostrar de '{}' aún no implementado. Solo 'asistencias' está disponible.", tipo));
     }
     
     let ruta_cursos = ruta_base.join("datos/cursos");

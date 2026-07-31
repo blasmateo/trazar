@@ -3,11 +3,86 @@ use std::path::{Path, PathBuf};
 use rustyline::DefaultEditor;
 use regex::Regex;
 
+use crate::curso::preguntas::encontrar_curso;
+
+fn listar_cursos(ruta_cursos: &Path) -> Result<Vec<(u32, String)>, String> {
+    let mut cursos: Vec<(u32, String)> = Vec::new();
+    let entradas = fs::read_dir(ruta_cursos)
+        .map_err(|e| format!("Error al leer directorio de cursos: {}", e))?;
+    for entrada in entradas {
+        let entrada = entrada.map_err(|e| format!("Error al leer entrada: {}", e))?;
+        let ruta = entrada.path();
+        if ruta.is_dir() {
+            if let Some(nombre) = ruta.file_name() {
+                let nombre_str = nombre.to_string_lossy().to_string();
+                if let Some(id_str) = nombre_str.split('-').next() {
+                    if let Ok(id) = id_str.parse::<u32>() {
+                        cursos.push((id, nombre_str));
+                    }
+                }
+            }
+        }
+    }
+    cursos.sort_by_key(|(id, _)| *id);
+    Ok(cursos)
+}
+
+/// Resuelve el ID del curso de forma obligatoria antes de procesar archivos.
+fn resolver_curso(ruta_cursos: &Path, curso_arg: Option<&str>, si: bool) -> Result<u32, String> {
+    if let Some(argumento) = curso_arg {
+        let cursos = listar_cursos(ruta_cursos)?;
+        if cursos.is_empty() {
+            return Err("No hay cursos registrados".to_string());
+        }
+        let nombre = encontrar_curso(&cursos, argumento)?;
+        let id = cursos.iter()
+            .find(|(_, n)| n == &nombre)
+            .map(|(id, _)| *id)
+            .expect("Curso encontrado pero sin ID");
+        return Ok(id);
+    }
+
+    if si {
+        return Err("Modo si: debe especificar el curso con -c/--curso".to_string());
+    }
+
+    let cursos = listar_cursos(ruta_cursos)?;
+    if cursos.is_empty() {
+        return Err("No hay cursos registrados".to_string());
+    }
+
+    let mut rl = DefaultEditor::new()
+        .map_err(|e| format!("Error al inicializar editor: {}", e))?;
+
+    println!("\nCursos disponibles:");
+    for (id, nombre) in &cursos {
+        println!("  [{}] {}", id, nombre);
+    }
+
+    let input = rl.readline("\nSeleccione el ID del curso (o Enter para salir): ")
+        .map_err(|e| format!("Error al leer entrada: {}", e))?;
+
+    let input = input.trim();
+    if input.is_empty() {
+        return Err("Importación cancelada: no se seleccionó ningún curso".to_string());
+    }
+
+    let id: u32 = input.parse()
+        .map_err(|_| "ID de curso inválido".to_string())?;
+
+    if !cursos.iter().any(|(curso_id, _)| *curso_id == id) {
+        return Err(format!("Curso con ID {} no encontrado", id));
+    }
+
+    Ok(id)
+}
+
 /// Importa uno o más archivos de asistencias a datos/cursos/<id-curso>/archivo/
 /// 
 /// - `archivos`: puede contener rutas de archivos individuales, globs (ej: *.txt), o directorios
-/// - `bloque`: si es true, modo silencioso (falla si falta metadata). Si false, pregunta interactivamente
-pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], bloque: bool) -> Result<(), String> {
+/// - `si`: si es true, modo silencioso (falla si falta metadata). Si false, pregunta interactivamente
+/// - `curso`: ID o nombre del curso destino. Si es None, se pregunta interactivamente (o falla en modo silencioso)
+pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], si: bool, curso: Option<&str>) -> Result<(), String> {
     let tipo = super::TipoDataset::from_str(tipo_str)?;
     
     if !matches!(tipo, super::TipoDataset::Asistencias) {
@@ -18,6 +93,9 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], bloque: b
     if !ruta_cursos.exists() {
         return Err(format!("No existe el directorio {}. Ejecute 'trazar archivo init' primero.", ruta_cursos.display()));
     }
+    
+    // Preguntar/resolver el curso de forma OBLIGATORIA antes de procesar archivos
+    let curso_id = resolver_curso(&ruta_cursos, curso, si)?;
     
     let archivos_expandidos = expandir_argumentos(archivos)?;
     
@@ -90,7 +168,7 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], bloque: b
     }
     
     // Decidir si continuar con importación interactiva o bloque
-    if bloque {
+    if si {
         // En modo bloque: importar automáticamente los archivos válidos
         if !errores_formato.is_empty() || !errores_metadata.is_empty() {
             println!("\n[Modo bloque] Continuando con importación automática...");
@@ -112,7 +190,7 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], bloque: b
     }
     
     // Procesar archivos válidos
-    let mut rl = if !bloque {
+    let mut rl = if !si {
         Some(DefaultEditor::new()
             .map_err(|e| format!("Error al inicializar editor: {}", e))?)
     } else {
@@ -138,7 +216,8 @@ pub fn ejecutar(ruta_base: &Path, tipo_str: &str, archivos: &[String], bloque: b
             ruta_base,
             archivo_fuente,
             metadata,
-            bloque,
+            si,
+            curso_id,
             rl.as_mut().unwrap_or(&mut DefaultEditor::new().unwrap()),
         ) {
             Ok(ruta_destino) => {
@@ -192,12 +271,12 @@ fn procesar_archivo_validado(
     ruta_base: &Path,
     archivo_fuente: &Path,
     metadata: &MetadataAsistencias,
-    bloque: bool,
+    si: bool,
+    curso_id: u32,
     rl: &mut DefaultEditor,
 ) -> Result<PathBuf, String> {
-    let curso_id = determinar_curso(ruta_base, metadata, rl, bloque)?;
-    let asignatura_info = determinar_asignatura(ruta_base, &curso_id, metadata, rl, bloque)?;
-    let clase_num = determinar_clase(metadata, archivo_fuente, rl, bloque)?;
+    let asignatura_info = determinar_asignatura(ruta_base, &curso_id, metadata, rl, si)?;
+    let clase_num = determinar_clase(metadata, archivo_fuente, rl, si)?;
     
     // Construir ruta destino: datos/cursos/<id-curso>/archivo/<tipo>/...
     let ruta_cursos = ruta_base.join("datos/cursos");
@@ -208,7 +287,7 @@ fn procesar_archivo_validado(
     if !ruta_tipo.exists() {
         fs::create_dir_all(&ruta_tipo)
             .map_err(|e| format!("Error al crear directorio {}: {}", ruta_tipo.display(), e))?;
-        if !bloque {
+        if !si {
             println!("✓ Creado directorio: {}", ruta_tipo.display());
         }
     }
@@ -220,7 +299,7 @@ fn procesar_archivo_validado(
         if !ruta_carpeta.exists() {
             fs::create_dir_all(&ruta_carpeta)
                 .map_err(|e| format!("Error al crear directorio {}: {}", ruta_carpeta.display(), e))?;
-            if !bloque {
+            if !si {
                 println!("✓ Creado: {}", nombre_carpeta);
             }
         }
@@ -231,7 +310,7 @@ fn procesar_archivo_validado(
     };
     
     if ruta_destino.exists() {
-        if bloque {
+        if si {
             // En modo bloque: sobrescribir automáticamente
         } else {
             println!("\n⚠ Ya existe el archivo: {}", ruta_destino.display());
@@ -586,83 +665,12 @@ fn parsear_archivo_asistencias(contenido: &str) -> Result<MetadataAsistencias, S
     Ok(metadata)
 }
 
-fn determinar_curso(ruta_base: &Path, metadata: &MetadataAsistencias, rl: &mut DefaultEditor, bloque: bool) -> Result<u32, String> {
-    let ruta_cursos = ruta_base.join("datos/cursos");
-    
-    if !ruta_cursos.exists() {
-        return Err("No existe el directorio de cursos".to_string());
-    }
-    
-    let mut cursos: Vec<(u32, String, String)> = Vec::new();
-    let entradas = fs::read_dir(&ruta_cursos)
-        .map_err(|e| format!("Error al leer directorio de cursos: {}", e))?;
-    
-    for entrada in entradas {
-        let entrada = entrada.map_err(|e| format!("Error al leer entrada: {}", e))?;
-        let ruta = entrada.path();
-        
-        if ruta.is_dir() {
-            if let Some(nombre) = ruta.file_name() {
-                let nombre_str = nombre.to_string_lossy().to_string();
-                if let Some(id_str) = nombre_str.split('-').next() {
-                    if let Ok(id) = id_str.parse::<u32>() {
-                        let nombre_sin_id = nombre_str.split('-').skip(1).collect::<Vec<_>>().join("-");
-                        cursos.push((id, nombre_str, nombre_sin_id));
-                    }
-                }
-            }
-        }
-    }
-    
-    if cursos.is_empty() {
-        return Err("No hay cursos registrados".to_string());
-    }
-    
-    cursos.sort_by_key(|(id, _, _)| *id);
-    
-    if let Some(nombre_curso) = &metadata.curso_nombre {
-        let nombre_curso_kebab = a_kebab_case_estricto(nombre_curso);
-        
-        // Coincidencia exacta (kebab-case)
-        if let Some((id, _, _)) = cursos.iter().find(|(_, _, nombre)| {
-            let nombre_kebab = a_kebab_case_estricto(nombre);
-            nombre_kebab == nombre_curso_kebab
-        }) {
-            return Ok(*id);
-        }
-        
-        // No hay coincidencia exacta
-    }
-    
-    if bloque {
-        return Err("Modo bloque: no se pudo determinar el curso automáticamente. "
-                   .to_owned() + "Use la cabecera '# curso:' en los archivos con el nombre exacto del curso.");
-    }
-    
-    println!("\nCursos disponibles:");
-    for (id, nombre_completo, _) in &cursos {
-        println!("  [{}] {}", id, nombre_completo);
-    }
-    
-    let input = rl.readline("\nSeleccione el ID del curso: ")
-        .map_err(|e| format!("Error al leer entrada: {}", e))?;
-    
-    let id: u32 = input.trim().parse()
-        .map_err(|_| "ID de curso inválido".to_string())?;
-    
-    if !cursos.iter().any(|(curso_id, _, _)| *curso_id == id) {
-        return Err(format!("Curso con ID {} no encontrado", id));
-    }
-    
-    Ok(id)
-}
-
 fn determinar_asignatura(
     ruta_base: &Path,
     curso_id: &u32,
     metadata: &MetadataAsistencias,
     rl: &mut DefaultEditor,
-    bloque: bool,
+    si: bool,
 ) -> Result<Option<(u32, String)>, String> {
     let ruta_cursos = ruta_base.join("datos/cursos");
     
@@ -740,7 +748,7 @@ fn determinar_asignatura(
                     let nueva_id = asignaturas.last()
                         .map(|(a, _, _)| a + 1)
                         .unwrap_or(1);
-                    if !bloque {
+                    if !si {
                         println!("\n✓ Nueva asignatura detectada: {} (asignada ID {})", nombre_asignatura, nueva_id);
                     }
                     nueva_id
@@ -770,7 +778,7 @@ fn determinar_asignatura(
             let nueva_id = asignaturas.last()
                 .map(|(a, _, _)| a + 1)
                 .unwrap_or(1);
-            if !bloque {
+            if !si {
                 println!("\n✓ Nueva asignatura: {} (ID {})", nombre_asignatura, nueva_id);
             }
             return Ok(Some((nueva_id, nombre_kebab)));
@@ -781,7 +789,7 @@ fn determinar_asignatura(
             return Ok(Some((id, nombre_kebab)));
         }
         
-        if bloque {
+        if si {
             return Err("Modo bloque: no se pudo determinar el ID de la asignatura automáticamente. "
                        .to_owned() + "Incluya el ID al inicio del nombre (ej: '# asignatura: 1 Matematicas')");
         }
@@ -806,7 +814,7 @@ fn determinar_asignatura(
     Ok(None)
 }
 
-fn determinar_clase(metadata: &MetadataAsistencias, archivo_fuente: &Path, rl: &mut DefaultEditor, bloque: bool) -> Result<u32, String> {
+fn determinar_clase(metadata: &MetadataAsistencias, archivo_fuente: &Path, rl: &mut DefaultEditor, si: bool) -> Result<u32, String> {
     if let Some(clase) = metadata.clase_numero {
         return Ok(clase);
     }
@@ -822,7 +830,7 @@ fn determinar_clase(metadata: &MetadataAsistencias, archivo_fuente: &Path, rl: &
         }
     }
     
-    if bloque {
+    if si {
         return Err("Modo bloque: no se pudo determinar el número de clase. "
                    .to_owned() + "Use la cabecera '# clase:' o nombre de archivo con patrón cNNN (ej: asistencias-c036.txt)");
     }

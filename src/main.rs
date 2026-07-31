@@ -97,7 +97,7 @@ INSPECCIÓN (-i, --inspeccionar):
 SUBCOMANDOS:
   init                  Crear estructura base
   purgar                Purgar datos de usuario (requiere confirmación)
-  importar              Importar archivos crudos
+  importar              Importar archivos crudos (requiere -c/--curso)
   exportar              Exportar datos a .docx
   mostrar               Listar archivos
   remover               Remover archivos
@@ -106,13 +106,13 @@ EJEMPLOS:
   trazar archivo -i verificar
   trazar archivo -i validar -t asistencias
   trazar archivo init
-  trazar archivo importar -t asistencias -r archivo.txt"
+  trazar archivo importar -c 1 -t asistencias -r archivo.txt"
 	)]
 	Archivo {
 		/// Inspeccionar estructura o archivos: validar o verificar
 		#[arg(short = 'i', long = "inspeccionar", value_name = "ACCION")]
 		inspeccionar: Option<AccionInspeccion>,
-		/// Tipo de dataset para 'validar' (opcional, por defecto asistencias)
+				/// Tipo de dataset (obligatorio para validar y mostrar)
 		#[arg(short = 't', long = "tipo", value_name = "TIPO", requires = "inspeccionar")]
 		tipo: Option<TipoDatasetCli>,
 		#[command(subcommand)]
@@ -209,8 +209,15 @@ enum ArchivoAction {
     /// Importar archivo crudo a datos/cursos/<id-curso>/archivo/
     #[command(
         help_template = HELP_SUBCMD,
-        override_usage = "trazar archivo importar -t <TIPO> -r <RUTA>... [OPCIONES]",
+        override_usage = "trazar archivo importar -c <CURSO> -t <TIPO> -r <RUTA>... [OPCIONES]",
         long_about = "Importa uno o más archivos crudos al directorio datos/cursos/<id-curso>/archivo/asistencias/.
+
+CURSO DESTINO (-c, --curso) — OBLIGATORIO:
+  Identifica el curso al que se importan los archivos. Se pregunta ANTES de
+  procesar ningún archivo, para no hacer trabajo en vano si no se selecciona.
+  - ID numérico:           -c 1
+  - Nombre exacto:         -c 001-matematicas
+  - Nombre simple:         -c matematicas
 
 TIPOS VÁLIDOS (-t, --tipo):
   asistencias    Archivo de registro de asistencias a clases
@@ -260,23 +267,26 @@ NOMBRE DEL ARCHIVO:
 
 EJEMPLOS DE USO:
   # Importar un solo archivo
-  trazar archivo importar -t asistencias -r asistencias-c036.txt
+  trazar archivo importar -c 1 -t asistencias -r asistencias-c036.txt
 
   # Importar múltiples archivos
-  trazar archivo importar -t asistencias -r clase-001.txt clase-002.txt
+  trazar archivo importar -c 1 -t asistencias -r clase-001.txt clase-002.txt
 
   # Importar directorio completo (sin preguntar)
-  trazar archivo importar -t asistencias -r ./asistencias/ -s
+  trazar archivo importar -c 1 -t asistencias -r ./asistencias/ -s
 
   # Importar con glob (el shell expande los *.txt)
-  trazar archivo importar -t asistencias -r *.txt -s",
+  trazar archivo importar -c matematicas -t asistencias -r *.txt -s",
         after_help = "ESTRUCTURA DE DESTINO:
   Con asignatura:  datos/cursos/<id-curso>/archivo/asistencias/<id>-<nombre-kebab>/clase-<NNN>.txt
   Sin asignatura:  datos/cursos/<id-curso>/archivo/asistencias/clase-<NNN>.txt
 
-NOTA: Las opciones -t, -r y -s pueden usarse en cualquier orden."
+NOTA: Las opciones -c, -t, -r y -s pueden usarse en cualquier orden."
     )]
-    Importar {
+        Importar {
+        /// Curso destino (obligatorio): ID o nombre exacto del curso
+        #[arg(short = 'c', long = "curso", value_name = "CURSO", required = true)]
+        curso: String,
         /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
         #[arg(short = 't', long = "tipo", value_name = "TIPO", required = true)]
         tipo: TipoDatasetCli,
@@ -469,7 +479,7 @@ fn main() {
             }
         }
 		
-		Commands::Archivo { inspeccionar, tipo, action } => {
+				Commands::Archivo { inspeccionar, tipo, action, .. } => {
 			// Flag -i/--inspeccionar tiene prioridad sobre los subcomandos
 			if let Some(accion) = inspeccionar {
 				match accion {
@@ -512,9 +522,10 @@ fn main() {
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}
 				}
-				Some(ArchivoAction::Importar { tipo, archivos, si }) => {
+								Some(ArchivoAction::Importar { curso, tipo, archivos, si }) => {
+					let curso_str = if curso.trim().is_empty() { None } else { Some(curso.as_str()) };
 					let tipo_str = tipo.to_string();
-					match archivo::importar(&ruta_base, &tipo_str, &archivos, si) {
+					match archivo::importar(&ruta_base, &tipo_str, &archivos, si, curso_str) {
 						Ok(_) => {},
 						Err(e) => eprintln!("✗ Error: {}", e),
 					}

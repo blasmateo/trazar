@@ -3,10 +3,9 @@ use std::path::Path;
 
 /// Valida archivos de asistencias en datos/cursos/*/archivo/asistencias/
 pub fn ejecutar(ruta_base: &Path, tipo_str: Option<&str>) -> Result<(), String> {
-    if let Some(tipo) = tipo_str {
-        if tipo != "asistencias" {
-            return Err(format!("Validación de '{}' aún no implementada. Solo 'asistencias' está disponible.", tipo));
-        }
+    let tipo = tipo_str.ok_or("Debe especificar -t/--tipo (ej: asistencias).")?;
+    if tipo != "asistencias" {
+        return Err(format!("Validación de '{}' aún no implementada. Solo 'asistencias' está disponible.", tipo));
     }
     
     let ruta_cursos = ruta_base.join("datos/cursos");
