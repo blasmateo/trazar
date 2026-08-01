@@ -1,37 +1,26 @@
-# Rust
+```
+# Rust toolchain
+.rustup/downloads/
+.rustup/settings.toml
+
+# Dependencies
 target/
-Cargo.lock
+**/target/
 
-# Python
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
+# Logs and temp files
+*.log
+*.tmp
 
-# Datos del usuario
-target/debug/datos
-datos/
+# Environment
+.env
+.env.local
+*.env.*
 
-# Salidas de exportación
-*.docx
-
-# Scripts compilados
-_scripts/
-build/
-*.exe
-*.spec
-
-# IDE
+# Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-.clinerules
 
-# Sistema
+# OS generated files
 .DS_Store
 Thumbs.db
+```

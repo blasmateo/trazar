@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand, CommandFactory, ValueEnum};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
+use colored::Colorize;
 
 mod curso;
 mod cursante;
@@ -27,32 +28,32 @@ impl std::fmt::Display for TipoDatasetCli {
     }
 }
 
-// Templates de ayuda en español
-const HELP_CMD: &str = "\
+// Templates de ayuda en español con mejor formato - minimalista y claro
+const HELP_CMD: &str = "{before-help}{name} {version}
 {about-with-newline}
-Uso: {usage}
 
-Comandos:
-{subcommands}
-Opciones:
-{options}
-";
+{usage-heading} {usage}
 
-const HELP_SUBCMD: &str = "\
-{about-with-newline}
-Uso: {usage}
+{all-args}
 
-Opciones:
-{options}
-";
+{after-help}";
+
+const HELP_SUBCMD: &str = "{before-help}{about-with-newline}
+
+{usage-heading} {usage}
+
+{all-args}
+
+{after-help}";
 
 #[derive(Parser)]
 #[command(
-    name = "trazar",
-    about = "Trazabilidad Académica y Reporte",
+    name = "trazar".bright_blue().to_string(),
+    about = "Gestión académica simple y eficiente".green().to_string(),
     version,
     help_template = HELP_CMD,
-    override_usage = "trazar <COMANDO>"
+    override_usage = "trazar <COMANDO>".yellow().to_string(),
+    after_help = "Ejemplos:\n  trazar curso nuevo\n  trazar archivo init\n  trazar completions bash\n\nUsa 'trazar <comando> --help' para más ayuda.".dimmed().to_string()
 )]
 struct Cli {
     #[command(subcommand)]
@@ -61,7 +62,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Gestión de cursos
+    /// Gestión de cursos (nuevo, mostrar, editar, remover)
     #[command(
         help_template = HELP_CMD,
         override_usage = "trazar curso <COMANDO>"
@@ -70,72 +71,54 @@ enum Commands {
         #[command(subcommand)]
         action: CursoAction,
     },
-    
-    /// Gestión de cursantes
+
+    /// Gestión de cursantes (nuevo, mostrar, editar, remover)
     #[command(
         help_template = HELP_CMD,
         override_usage = "trazar cursante [OPCIONES] <COMANDO>"
     )]
     Cursante {
-        /// Curso al que pertenece cada cursante
+        /// Curso al que pertenece el cursante
         #[arg(short = 'c', long = "curso")]
         curso: Option<String>,
         #[command(subcommand)]
         action: CursanteAction,
     },
 
-	/// Gestión de archivos de datos e inspección de estructura
-	#[command(
-		help_template = HELP_CMD,
-		override_usage = "trazar archivo [OPCIONES] [COMANDO]",
-		long_about = "Gestión de archivos de datos e inspección de estructura.
+    /// Gestión de archivos e inspección (init, importar, exportar, mostrar, remover)
+    #[command(
+        help_template = HELP_CMD,
+        override_usage = "trazar archivo [OPCIONES] [COMANDO]",
+        long_about = "Gestiona archivos de datos e inspecciona la estructura.\n\nUso común:\n  trazar archivo -i verificar       Verifica integridad de directorios\n  trazar archivo -i validar -t asistencias   Valida archivos importados\n  trazar archivo init               Crea estructura base\n  trazar archivo importar -c 1 -t asistencias -r archivo.txt\n  trazar archivo exportar -t asistencias -m lista -r salida.docx"
+    )]
+    Archivo {
+        /// Inspeccionar: validar o verificar
+        #[arg(short = 'i', long = "inspeccionar", value_name = "ACCION")]
+        inspeccionar: Option<AccionInspeccion>,
+        /// Tipo de dataset (para validar y mostrar)
+        #[arg(short = 't', long = "tipo", value_name = "TIPO", requires = "inspeccionar")]
+        tipo: Option<TipoDatasetCli>,
+        #[command(subcommand)]
+        action: Option<ArchivoAction>,
+    },
 
-INSPECCIÓN (-i, --inspeccionar):
-  -i validar [-t TIPO]  Valida el formato semántico de archivos importados
-  -i verificar          Verifica la integridad de la estructura de directorios
+    /// Métricas y reportes (mostrar, calcular)
+    #[command(
+        help_template = HELP_CMD,
+        override_usage = "trazar metricas <COMANDO>"
+    )]
+    Metricas {
+        #[command(subcommand)]
+        action: MetricasAction,
+    },
 
-SUBCOMANDOS:
-  init                  Crear estructura base
-  purgar                Purgar datos de usuario (requiere confirmación)
-  importar              Importar archivos crudos (requiere -c/--curso)
-  exportar              Exportar datos a .docx
-  mostrar               Listar archivos
-  remover               Remover archivos
-
-EJEMPLOS:
-  trazar archivo -i verificar
-  trazar archivo -i validar -t asistencias
-  trazar archivo init
-  trazar archivo importar -c 1 -t asistencias -r archivo.txt"
-	)]
-	Archivo {
-		/// Inspeccionar estructura o archivos: validar o verificar
-		#[arg(short = 'i', long = "inspeccionar", value_name = "ACCION")]
-		inspeccionar: Option<AccionInspeccion>,
-				/// Tipo de dataset (obligatorio para validar y mostrar)
-		#[arg(short = 't', long = "tipo", value_name = "TIPO", requires = "inspeccionar")]
-		tipo: Option<TipoDatasetCli>,
-		#[command(subcommand)]
-		action: Option<ArchivoAction>,
-	},
-	
-	/// Generar métricas y reportes
-	#[command(
-		help_template = HELP_CMD,
-		override_usage = "trazar metricas <COMANDO>"
-	)]
-	Metricas {
-		#[command(subcommand)]
-		action: MetricasAction,
-	},
-    
-    /// Generar scripts de autocompletado
+    /// Generar autocompletado para tu shell
     #[command(
         help_template = HELP_SUBCMD,
         override_usage = "trazar completions <SHELL> [RUTA]"
     )]
     Completions {
-        /// Shell para el que generar el script
+        /// Shell: bash, zsh, fish, powershell
         shell: Shell,
         /// Ruta donde guardar el script
         ruta: Option<String>,
@@ -147,6 +130,7 @@ enum CursoAction {
     /// Crear un nuevo curso
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso nuevo")]
     Nuevo,
+    
     /// Mostrar cursos (lista o ficha específica)
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso mostrar [OPCIONES]")]
     Mostrar {
@@ -154,6 +138,7 @@ enum CursoAction {
         #[arg(short = 'i', long = "id")]
         id: Option<String>,
     },
+    
     /// Editar un curso existente
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso editar [OPCIONES]")]
     Editar {
@@ -161,6 +146,7 @@ enum CursoAction {
         #[arg(short = 'i', long = "id")]
         id: Option<String>,
     },
+    
     /// Remover cursos
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar curso remover [OPCIONES]")]
     Remover {
@@ -175,6 +161,7 @@ enum CursanteAction {
     /// Agregar cursante
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante nuevo")]
     Nuevo,
+    
     /// Mostrar cursantes (lista o ficha específica)
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante mostrar [OPCIONES]")]
     Mostrar {
@@ -182,6 +169,7 @@ enum CursanteAction {
         #[arg(short = 'i', long = "id")]
         id: Option<String>,
     },
+    
     /// Editar cursante
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante editar [OPCIONES]")]
     Editar {
@@ -189,6 +177,7 @@ enum CursanteAction {
         #[arg(short = 'i', long = "id")]
         id: Option<String>,
     },
+    
     /// Remover cursantes
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar cursante remover [OPCIONES]")]
     Remover {
@@ -200,139 +189,70 @@ enum CursanteAction {
 
 #[derive(Subcommand)]
 enum ArchivoAction {
-    /// Iniciar directorios base
+    /// Crear estructura base de directorios
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar archivo init")]
     Init,
-    /// Purgar toda la base de datos de usuario
+    
+    /// Purgar toda la base de datos (requiere confirmación)
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar archivo purgar")]
     Purgar,
-    /// Importar archivo crudo a datos/cursos/<id-curso>/archivo/
+    
+    /// Importar archivos crudos
     #[command(
         help_template = HELP_SUBCMD,
-        override_usage = "trazar archivo importar -c <CURSO> -t <TIPO> -r <RUTA>... [OPCIONES]",
-        long_about = "Importa uno o más archivos crudos al directorio datos/cursos/<id-curso>/archivo/asistencias/.
-
-CURSO DESTINO (-c, --curso) — OBLIGATORIO:
-  Identifica el curso al que se importan los archivos. Se pregunta ANTES de
-  procesar ningún archivo, para no hacer trabajo en vano si no se selecciona.
-  - ID numérico:           -c 1
-  - Nombre exacto:         -c 001-matematicas
-  - Nombre simple:         -c matematicas
-
-TIPOS VÁLIDOS (-t, --tipo):
-  asistencias    Archivo de registro de asistencias a clases
-  quizzes        Archivo de resultados de quizzes (próximamente)
-  asignaciones   Archivo de estados de asignaciones (próximamente)
-  pagos          Archivo de registros de pagos (próximamente)
-
-RUTAS VÁLIDAS (-r, --ruta):
-  - Archivos individuales:  -r archivo1.txt archivo2.txt
-  - Directorios:            -r ./carpeta-con-archivos/
-  - Globs (expandidos por el shell):  -r *.txt
-
-OPCIONES:
-  -s, --si         Importa solo los archivos válidos sin preguntar (auto-afirmación)
-
-FORMATO DEL ARCHIVO DE ASISTENCIAS:
-
-El archivo debe tener cabeceras seguidas de un separador y las líneas de asistencia:
-
-  # log: asistencias
-  # curso: <nombre-del-curso>
-  # asignatura: <nombre-de-asignatura>
-  # clase: <numero>
-  # fecha_creacion: <YYYYMMDDTHHMMSS±Z>
-  # ====================
-  
-  x - Nombre Apellido Uno
-  s - Nombre Apellido Dos
-  x - Nombre Apellido Tres
-
-CAMPOS DE CABECERA:
-  - log:              Obligatorio. Debe ser 'asistencias'
-  - curso:            Opcional. Nombre del curso (debe coincidir exactamente con curso registrado)
-  - asignatura:       Opcional. Nombre de asignatura (si se omite va a eventos-academicos)
-  - clase:            Opcional. Número de clase (también se puede extraer del nombre del archivo con patrón cNNN)
-  - fecha_creacion:   Opcional. Timestamp de creación en formato YYYYMMDDTHHMMSS±Z (ej: 20260702T193230-0500)
-
-LÍNEAS DE ASISTENCIA:
-  - Formato estricto: [x|s|X|S] - <Nombre Completo> (requiere x/s/S/X)
-  - 'x' o 'X': ausente
-  - 's' o 'S': presente
-  - Se permiten líneas vacías y comentarios con #
-
-NOMBRE DEL ARCHIVO:
-  - Debe contener el patrón 'cNNN' (ej: asistencias-c036.txt)
-  - El número de clase se extrae de este patrón
-
-EJEMPLOS DE USO:
-  # Importar un solo archivo
-  trazar archivo importar -c 1 -t asistencias -r asistencias-c036.txt
-
-  # Importar múltiples archivos
-  trazar archivo importar -c 1 -t asistencias -r clase-001.txt clase-002.txt
-
-  # Importar directorio completo (sin preguntar)
-  trazar archivo importar -c 1 -t asistencias -r ./asistencias/ -s
-
-  # Importar con glob (el shell expande los *.txt)
-  trazar archivo importar -c matematicas -t asistencias -r *.txt -s",
-        after_help = "ESTRUCTURA DE DESTINO:
-  Con asignatura:  datos/cursos/<id-curso>/archivo/asistencias/<id>-<nombre-kebab>/clase-<NNN>.txt
-  Sin asignatura:  datos/cursos/<id-curso>/archivo/asistencias/clase-<NNN>.txt
-
-NOTA: Las opciones -c, -t, -r y -s pueden usarse en cualquier orden."
+        override_usage = "trazar archivo importar -c <CURSO> -t <TIPO> -r <RUTA>... [-s]",
+        long_about = "Importa archivos crudos al directorio del curso.\n\nUso:\n  trazar archivo importar -c 1 -t asistencias -r archivo.txt\n  trazar archivo importar -c matematicas -t asistencias -r *.txt -s\n\nOpciones:\n  -c, --curso     Curso destino (ID o nombre)\n  -t, --tipo      Tipo: asistencias, quizzes, asignaciones, pagos\n  -r, --ruta      Archivos o directorios a importar\n  -s, --si        Auto-afirmar (sin preguntar)"
     )]
-        Importar {
-        /// Curso destino (obligatorio): ID o nombre exacto del curso
+    Importar {
+        /// Curso destino (ID o nombre)
         #[arg(short = 'c', long = "curso", value_name = "CURSO", required = true)]
         curso: String,
-        /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
+        /// Tipo de dataset
         #[arg(short = 't', long = "tipo", value_name = "TIPO", required = true)]
         tipo: TipoDatasetCli,
-        /// Ruta(s) del archivo(s) a importar (acepta múltiples archivos, globs, o directorios)
+        /// Archivos o directorios a importar
         #[arg(short = 'r', long = "ruta", value_name = "RUTA", required = true, num_args = 1..)]
         archivos: Vec<String>,
-        /// Auto-afirmación: importa solo los archivos válidos sin preguntar
+        /// Auto-afirmar (importar sin preguntar)
         #[arg(short = 's', long = "si")]
         si: bool,
     },
-    
-    /// Exportar datos consolidados a .docx
+
+    /// Exportar datos a .docx
     #[command(
         help_template = HELP_SUBCMD,
         override_usage = "trazar archivo exportar -t <TIPO> -m [lista|tabla] -r <RUTA>"
     )]
     Exportar {
-        /// Tipo de dataset (asistencias, quizzes, asignaciones, pagos)
+        /// Tipo de dataset
         #[arg(short = 't', long = "tipo", value_name = "TIPO")]
         tipo: TipoDatasetCli,
-        /// Modo de exportación: lista (resumen) o tabla (detallado)
+        /// Modo: lista (resumen) o tabla (detallado)
         #[arg(short = 'm', long = "modo", value_name = "MODO", default_value = "lista")]
         modo: ModoMetricas,
-        /// Ruta de salida del archivo .docx
+        /// Ruta de salida del .docx
         #[arg(short = 'r', long = "ruta", value_name = "RUTA")]
         ruta: String,
     },
-    
-    /// Listar archivos en datos/archivo/
+
+    /// Listar archivos
     #[command(
         help_template = HELP_SUBCMD,
         override_usage = "trazar archivo mostrar [TIPO]"
     )]
     Mostrar {
-        /// Tipo de dataset (opcional, si se omite muestra todos)
+        /// Tipo de dataset (opcional)
         #[arg(value_name = "TIPO")]
         tipo: Option<String>,
     },
-    
-    /// Remover archivo de datos/cursos/<curso>/archivo/
+
+    /// Remover archivos
     #[command(
         help_template = HELP_SUBCMD,
         override_usage = "trazar archivo remover [ARCHIVO...]"
     )]
     Remover {
-        /// Rutas o nombres de archivos a remover (si se omite, modo interactivo)
+        /// Archivos a remover (interactivo si se omite)
         #[arg(value_name = "ARCHIVO", num_args = 0..)]
         archivos: Vec<String>,
     },
@@ -341,9 +261,9 @@ NOTA: Las opciones -c, -t, -r y -s pueden usarse en cualquier orden."
 /// Acciones de inspección para `trazar archivo inspeccionar`
 #[derive(ValueEnum, Clone, Debug)]
 enum AccionInspeccion {
-    /// Validar el formato semántico de los archivos importados
+    /// Validar formato semántico de archivos
     Validar,
-    /// Verificar la integridad de la estructura de directorios base
+    /// Verificar integridad de directorios
     Verificar,
 }
 
@@ -358,29 +278,30 @@ impl std::fmt::Display for AccionInspeccion {
 
 #[derive(Subcommand)]
 enum MetricasAction {
-    /// Mostrar métricas guardadas (lee JSON)
+    /// Mostrar métricas guardadas
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar metricas mostrar -t <TIPO> [-m <MODO>]")]
     Mostrar {
         /// Tipo de dataset
         #[arg(short = 't', long = "tipo", value_name = "TIPO")]
         tipo: TipoDatasetCli,
-        /// Modo de visualización: tabla o lista
+        /// Modo: tabla o lista
         #[arg(short = 'm', long = "modo", value_name = "MODO", default_value = "lista")]
         modo: ModoMetricas,
     },
-    /// Calcular métricas de asistencias
+    
+    /// Calcular métricas
     #[command(help_template = HELP_SUBCMD, override_usage = "trazar metricas calcular -t <TIPO> [-c <CURSANTE>] [-m <MODO>] [-a]")]
     Calcular {
         /// Tipo de dataset
         #[arg(short = 't', long = "tipo", value_name = "TIPO")]
         tipo: TipoDatasetCli,
-        /// Cursante a filtrar (opcional)
+        /// Filtrar por cursante
         #[arg(short = 'c', long = "cursante", value_name = "CURSANTE")]
         cursante: Option<String>,
-        /// Modo de visualización: tabla o lista
+        /// Modo: tabla o lista
         #[arg(short = 'm', long = "modo", value_name = "MODO", default_value = "lista")]
         modo: ModoMetricas,
-        /// Actualizar archivo JSON de métricas
+        /// Actualizar JSON de métricas
         #[arg(short = 'a', long = "actualizar")]
         actualizar: bool,
     },
@@ -389,9 +310,9 @@ enum MetricasAction {
 /// Modos de visualización para métricas
 #[derive(ValueEnum, Clone, Debug)]
 enum ModoMetricas {
-    /// Vista en tabla (asignatura, clase, asiste)
+    /// Vista en tabla
     Tabla,
-    /// Vista en lista resumida
+    /// Vista en lista
     Lista,
 }
 
